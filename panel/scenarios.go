@@ -39,12 +39,13 @@ type voiceSettings struct {
 	MusicRouting    bool        `json:"musicRouting"`
 	Provider        string      `json:"provider"`
 	BuiltinCommands bool        `json:"builtinCommands"`
+	QuickCommands   bool        `json:"quickCommands"`
 	BuiltinDisabled []string    `json:"builtinDisabled"`
 }
 
 var scenarioMu sync.Mutex
 var scenarioRunMu sync.Mutex
-var voiceCfg = voiceSettings{Rules: []voiceRule{}, Provider: "com.spotify.tv.android", BuiltinCommands: true}
+var voiceCfg = voiceSettings{Rules: []voiceRule{}, Provider: "com.spotify.tv.android", BuiltinCommands: true, QuickCommands: true}
 var lastVoiceState = "unknown"
 var lastVoiceSeen time.Time
 var voiceRequests = map[string]time.Time{}
@@ -272,7 +273,7 @@ func scenariosAPI(w http.ResponseWriter, r *http.Request) {
 		if last, ok := voiceDiagnostic["time"].(int64); ok && time.Now().Unix()-last < 180 {
 			diagnostic = voiceDiagnostic
 		}
-		response(w, map[string]any{"ok": true, "settings": voiceCfg, "observer": lastVoiceState, "lastResult": scenarioLast, "diagnostic": diagnostic, "nativeIPC": nativeIPCStatus(), "conversation": json.RawMessage(validJSONFile(filepath.Join(base, "native-conversation.json")))})
+		response(w, map[string]any{"ok": true, "settings": voiceCfg, "observer": lastVoiceState, "lastResult": scenarioLast, "diagnostic": diagnostic, "nativeIPC": nativeIPCStatus(), "quickVoice": quickVoiceStatus(), "conversation": json.RawMessage(validJSONFile(filepath.Join(base, "native-conversation.json")))})
 		return
 	}
 	if r.Method != "POST" {
@@ -401,8 +402,10 @@ func voiceEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	scenarioMu.Lock()
-	lastVoiceState = q.State
-	lastVoiceSeen = time.Now()
+	if q.Kind != "quick" {
+		lastVoiceState = q.State
+		lastVoiceSeen = time.Now()
+	}
 	if q.AlarmActive != nil {
 		nativeAlarmActive = *q.AlarmActive
 	}
@@ -431,6 +434,30 @@ func voiceEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query := normalizeVoicePhrase(q.Text)
+	if q.Kind == "quick" {
+		rule, ok := quickRule(query, settings)
+		if !ok {
+			response(w, map[string]bool{"ok": true, "handled": false})
+			return
+		}
+		if pairedQuickDuplicate(query, "quick", time.Now()) {
+			quickDuplicates.Add(1)
+			response(w, map[string]bool{"ok": true, "handled": true})
+			return
+		}
+		quickRouted.Add(1)
+		scenarioMu.Lock()
+		voiceDiagnostic = map[string]any{"text": query, "route": "quick", "time": time.Now().Unix()}
+		scenarioMu.Unlock()
+		response(w, map[string]bool{"ok": true, "handled": true})
+		dispatchMusicRule(rule)
+		return
+	}
+	if settings.QuickCommands && settings.BuiltinCommands && isShortMusicCommand(query) && selectedMusicContext() && pairedQuickDuplicate(query, "asr", time.Now()) {
+		quickDuplicates.Add(1)
+		handledVoice(w)
+		return
+	}
 	setDiagnostic := func(kind string) {
 		scenarioMu.Lock()
 		voiceDiagnostic = map[string]any{"text": q.Text, "route": kind, "time": time.Now().Unix()}
@@ -452,7 +479,11 @@ func voiceEvent(w http.ResponseWriter, r *http.Request) {
 	if rule, ok := builtInVoice(query, settings); ok {
 		setDiagnostic("scenario")
 		handledVoice(w)
-		go runVoiceScenario(rule)
+		if strings.HasPrefix(rule.ID, "music-") {
+			dispatchMusicRule(rule)
+		} else {
+			go runVoiceScenario(rule)
+		}
 		return
 	}
 	if routing {
@@ -460,8 +491,6 @@ func voiceEvent(w http.ResponseWriter, r *http.Request) {
 			setDiagnostic("music")
 			handledVoice(w)
 			go func() {
-				scenarioRunMu.Lock()
-				defer scenarioRunMu.Unlock()
 				e := playMusicQuery(query)
 				scenarioMu.Lock()
 				if e != nil {

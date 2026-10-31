@@ -5,7 +5,7 @@ import (
 )
 
 func ringAlbumWorker() {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
 		mu.Lock()
@@ -14,23 +14,8 @@ func ringAlbumWorker() {
 		if !wanted {
 			continue
 		}
-		m, e := helperMedia("metadata", "", selectedProvider())
-		if e != nil {
-			continue
-		}
-		raw, ok := m["palette"].([]any)
-		if !ok || len(raw) < 2 {
-			continue
-		}
-		palette := []string{}
-		for _, v := range raw {
-			if c, ok := v.(string); ok {
-				palette = append(palette, c)
-			}
-		}
-		if len(palette) < 2 {
-			continue
-		}
+		cover, _ := refreshCover()
+		palette := cover.Palette
 		mu.Lock()
 		if (cfg.Ring == "cover" || cfg.Ring == "music") && cfg.PaletteSource == "cover" {
 			cfg.Palette = palette

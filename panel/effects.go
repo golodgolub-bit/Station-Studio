@@ -91,6 +91,10 @@ func effects() {
 		musicMu.Lock()
 		level := musicLevels
 		musicMu.Unlock()
+		motionTime := level.Phase
+		if motionTime == 0 {
+			motionTime = t
+		}
 		if level.Level > 0 {
 			autoLevel = autoLevel*.985 + level.Level*.015
 		}
@@ -141,16 +145,27 @@ func effects() {
 					f *= .25 + .75*(1+math.Sin(t))/2
 				}
 			case "music":
+				if c.PaletteSource == "cover" && len(c.Palette) == 0 {
+					f = 0
+				}
 				if len(c.Palette) > 0 {
 					pos := float64(n) / 24
 					if c.FlagMotion == "rotate" || c.FlagMotion == "" {
-						pos += t * .015
+						pos += motionTime * .04
 					}
 					r, g, b = paletteBlend(c.Palette, pos)
 				}
 				v := 0.0
 				sensitivity := level.Gain / math.Max(.08, autoLevel*4)
 				switch level.Mode {
+				case "mirror":
+					band := int(math.Abs(float64(n)-11.5) * 16 / 12)
+					v = math.Sqrt(math.Max(0, level.Bands[band]*sensitivity*3))
+				case "orbit":
+					d := math.Mod(float64(n)-motionTime*5+2400000, 24)
+					v = math.Sqrt(math.Max(0, level.Level*sensitivity)) * math.Exp(-d*.25)
+				case "ribbon":
+					v = math.Sqrt(math.Max(0, level.Level*sensitivity)) * (.2 + .8*(1+math.Sin(float64(n)*.5-motionTime*2))/2)
 				case "wave":
 					v = math.Abs(level.Wave[n*25/24]) * sensitivity
 				case "pulse":
@@ -162,20 +177,26 @@ func effects() {
 					v = math.Sqrt(math.Max(0, level.Bands[band]*sensitivity*3))
 				}
 				v = math.Max(0, math.Min(1, v))
-				if level.Level < .0005 {
+				if level.Level < math.Max(.00001, level.NoiseFloor) {
 					v = 0
 				}
-				attack := .22
+				attack := level.Decay
+				if attack == 0 {
+					attack = .18
+				}
 				if v > envelopes[n] {
-					attack = .65
+					attack = level.Attack
+					if attack == 0 {
+						attack = .8
+					}
 				}
 				envelopes[n] += (v - envelopes[n]) * attack
 				f *= envelopes[n]
 				if c.FlagMotion == "wave" {
-					f *= .3 + .7*(1+math.Sin(t*2-float64(n)*.3))/2
+					f *= .3 + .7*(1+math.Sin(motionTime*2-float64(n)*.3))/2
 				}
 				if c.FlagMotion == "breathe" {
-					f *= .25 + .75*(1+math.Sin(t))/2
+					f *= .25 + .75*(1+math.Sin(motionTime))/2
 				}
 			}
 			r, g, b = math.Max(0, math.Min(255, r*f)), math.Max(0, math.Min(255, g*f)), math.Max(0, math.Min(255, b*f))

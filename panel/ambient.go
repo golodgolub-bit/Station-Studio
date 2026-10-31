@@ -271,7 +271,9 @@ func ambientWorker(ctx context.Context, done chan struct{}, q ambientConfig) {
 	defer close(done)
 	defer func() {
 		os.Remove(filepath.Join(base, "ambient.json"))
-		matrixPost(map[string]string{"action": "stop"})
+		if !musicOwnsMatrix.Load() {
+			matrixPost(map[string]string{"action": "stop"})
+		}
 		ambientMu.Lock()
 		ambientCancel = nil
 		ambientMu.Unlock()
@@ -289,6 +291,9 @@ func ambientWorker(ctx context.Context, done chan struct{}, q ambientConfig) {
 		case now := <-ticker.C:
 			if q.Duration != 0 && now.After(deadline) {
 				return
+			}
+			if musicOwnsMatrix.Load() {
+				continue
 			}
 			if assistantBusy() {
 				matrixPost(map[string]string{"action": "stop"})

@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -23,6 +24,7 @@ type musicTap struct {
 	capacity, rate  int
 	last            uint32
 	progress        time.Time
+	pid             string
 }
 type musicVisualConfig struct {
 	Action           string   `json:"action"`
@@ -36,13 +38,18 @@ type musicVisualConfig struct {
 	Source           string   `json:"source"`
 	ColorSource      string   `json:"colorSource"`
 	Motion           string   `json:"motion"`
+	Attack           float64  `json:"attack"`
+	Decay            float64  `json:"decay"`
+	NoiseFloor       float64  `json:"noiseFloor"`
+	Speed            float64  `json:"speed"`
 }
 type musicLight struct {
-	Bands [16]float64
-	Wave  [25]float64
-	Level float64
-	Mode  string
-	Gain  float64
+	Bands                            [16]float64
+	Wave                             [25]float64
+	Level                            float64
+	Mode                             string
+	Gain                             float64
+	Attack, Decay, NoiseFloor, Phase float64
 }
 
 var musicMu sync.Mutex
@@ -52,6 +59,7 @@ var musicDone chan struct{}
 var musicLastError string
 var musicConfig musicVisualConfig
 var musicLevels musicLight
+var musicOwnsMatrix atomic.Bool
 
 func activeMediaPID(dump string) string {
 	if i := strings.Index(dump, "PlaybackActivityMonitor dump time:"); i >= 0 {
@@ -72,15 +80,43 @@ func activeMediaPID(dump string) string {
 	}
 	return pid
 }
+func activeMediaPIDs(dump string) []string {
+	if i := strings.Index(dump, "PlaybackActivityMonitor dump time:"); i >= 0 {
+		dump = dump[i:]
+	}
+	if i := strings.Index(dump, "Audio event log:"); i >= 0 {
+		dump = dump[:i]
+	}
+	pids := []string{}
+	for _, line := range strings.Split(dump, "\n") {
+		if strings.Contains(line, "state:started") && strings.Contains(line, "usage=USAGE_MEDIA ") {
+			m := regexp.MustCompile(`u/pid:(\d+)/(\d+)`).FindStringSubmatch(line)
+			if len(m) == 3 {
+				pids = append(pids, m[2])
+			}
+		}
+	}
+	return pids
+}
 func openMusicTap(source string) (*musicTap, error) {
 	entries, _ := os.ReadDir("/proc")
 	pid := ""
-	if source == "system" {
+	if source == "system" || source == "selected" || source == "" {
 		dump, _ := run(3*time.Second, "/system/bin/dumpsys", "audio")
 		pid = activeMediaPID(dump)
+		if source != "system" {
+			pid = ""
+			for _, candidate := range activeMediaPIDs(dump) {
+				name := strings.SplitN(read("/proc/"+candidate+"/cmdline"), "\x00", 2)[0]
+				if name == selectedProvider() || strings.HasPrefix(name, selectedProvider()+":") {
+					pid = candidate
+					break
+				}
+			}
+		}
 	}
 	for _, entry := range entries {
-		if source == "system" {
+		if source == "system" || source == "selected" || source == "" {
 			break
 		}
 		b, _ := os.ReadFile("/proc/" + entry.Name() + "/cmdline")
@@ -90,7 +126,7 @@ func openMusicTap(source string) (*musicTap, error) {
 		}
 	}
 	if pid == "" {
-		return nil, fmt.Errorf("Включите музыку или видео на станции")
+		return nil, fmt.Errorf("Ожидаем звук выбранного музыкального сервиса")
 	}
 	maps := read("/proc/" + pid + "/maps")
 	var start, end uint64
@@ -147,7 +183,7 @@ func openMusicTap(source string) (*musicTap, error) {
 		if tap != nil {
 			return bad()
 		}
-		tap = &musicTap{f: f, address: int64(start) + int64(i), buffer: int64(start) + int64(i) + 0xd0, capacity: capacity, rate: rate, progress: time.Now()}
+		tap = &musicTap{f: f, address: int64(start) + int64(i), buffer: int64(start) + int64(i) + 0xd0, capacity: capacity, rate: rate, progress: time.Now(), pid: pid}
 	}
 	if tap == nil {
 		return bad()
@@ -165,10 +201,10 @@ func (t *musicTap) sample() (musicLight, error) {
 		t.progress = time.Now()
 		t.last = position
 	}
-	if time.Since(t.progress) > 1200*time.Millisecond {
+	if time.Since(t.progress) > 300*time.Millisecond {
 		return result, fmt.Errorf("Музыка на паузе")
 	}
-	count := 512
+	count := 2048
 	if t.capacity < count {
 		count = t.capacity
 	}
@@ -209,11 +245,13 @@ func (t *musicTap) sample() (musicLight, error) {
 		result.Wave[x] = v
 	}
 	frequencies := []float64{90, 140, 220, 320, 460, 650, 900, 1250, 1700, 2300, 3100, 4200, 5600, 7400, 9800, 13000}
+	for i := range samples {
+		samples[i] *= .5 - .5*math.Cos(2*math.Pi*float64(i)/float64(count-1))
+	}
 	for band, freq := range frequencies {
 		coefficient := 2 * math.Cos(2*math.Pi*freq/float64(t.rate))
 		s1, s2 := 0.0, 0.0
-		for i, v := range samples {
-			v *= .5 - .5*math.Cos(2*math.Pi*float64(i)/float64(count-1))
+		for _, v := range samples {
 			s := v + coefficient*s1 - s2
 			s2 = s1
 			s1 = s
@@ -224,7 +262,14 @@ func (t *musicTap) sample() (musicLight, error) {
 	return result, nil
 }
 func musicSnapshot() musicLight { musicMu.Lock(); defer musicMu.Unlock(); return musicLevels }
-func stopMusicVisual()          { musicControlMu.Lock(); defer musicControlMu.Unlock(); stopMusicVisualLocked() }
+func validMusicMode(mode string) bool {
+	switch mode {
+	case "spectrum", "wave", "pulse", "vu", "mirror", "orbit", "ribbon":
+		return true
+	}
+	return false
+}
+func stopMusicVisual() { musicControlMu.Lock(); defer musicControlMu.Unlock(); stopMusicVisualLocked() }
 func stopMusicVisualLocked() {
 	musicMu.Lock()
 	cancel, done := musicCancel, musicDone
@@ -243,6 +288,31 @@ func musicMatrixFrame(s musicLight, mode string) []byte {
 	}
 	level := math.Min(1, s.Level*s.Gain*3)
 	switch mode {
+	case "mirror":
+		for x := 0; x < 25; x++ {
+			v := s.Bands[x*16/25] * s.Gain
+			h := int(math.Max(0, math.Min(8, (20*math.Log10(math.Max(1e-8, v))+65)/8)))
+			for y := 0; y < h; y++ {
+				put(x, 7-y, byte(220-y*18))
+				put(x, 8+y, byte(220-y*18))
+			}
+		}
+	case "orbit":
+		for k := 0; k < 18; k++ {
+			angle := s.Phase*2 - float64(k)*.1
+			radius := 2 + level*5
+			x := 12 + int(math.Cos(angle)*radius*1.5)
+			y := 8 + int(math.Sin(angle)*radius)
+			put(x, y, byte(float64(255-k*12)*math.Sqrt(level)))
+		}
+	case "ribbon":
+		for x := 0; x < 25; x++ {
+			height := math.Sin(float64(x)*.35-s.Phase*2) * (1 + level*6)
+			for y := 0; y < 16; y++ {
+				v := 255 * math.Max(0, 1-math.Abs(float64(y)-7.5-height)/1.8) * math.Sqrt(level)
+				put(x, y, byte(v))
+			}
+		}
 	case "wave":
 		for x, v := range s.Wave {
 			y := 8 - int(math.Max(-7, math.Min(7, v*s.Gain*9)))
@@ -287,6 +357,7 @@ func musicVisualWorker(ctx context.Context, done chan struct{}, q musicVisualCon
 	var tap *musicTap
 	ownedMatrix := false
 	defer func() {
+		musicOwnsMatrix.Store(false)
 		if tap != nil {
 			tap.f.Close()
 		}
@@ -297,6 +368,7 @@ func musicVisualWorker(ctx context.Context, done chan struct{}, q musicVisualCon
 		if cfg.Ring == "music" {
 			cfg.Ring = previous.Ring
 			cfg.Palette = previous.Palette
+			cfg.PaletteSource = previous.PaletteSource
 			cfg.FlagMotion = previous.FlagMotion
 			cfg.Color = previous.Color
 			cfg.Brightness = previous.Brightness
@@ -310,7 +382,7 @@ func musicVisualWorker(ctx context.Context, done chan struct{}, q musicVisualCon
 	}()
 	deadline := time.Now().Add(time.Duration(q.Duration) * time.Second)
 	retry := time.Time{}
-	ticker := time.NewTicker(100 * time.Millisecond)
+	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		select {
@@ -330,9 +402,14 @@ func musicVisualWorker(ctx context.Context, done chan struct{}, q musicVisualCon
 					musicLastError = ""
 				}
 				musicMu.Unlock()
-				retry = now.Add(2 * time.Second)
+				retry = now.Add(500 * time.Millisecond)
 			}
 			if tap == nil {
+				musicOwnsMatrix.Store(false)
+				if ownedMatrix {
+					matrixPost(map[string]string{"action": "stop"})
+					ownedMatrix = false
+				}
 				continue
 			}
 			s, e := tap.sample()
@@ -347,12 +424,16 @@ func musicVisualWorker(ctx context.Context, done chan struct{}, q musicVisualCon
 			}
 			s.Mode = q.Mode
 			s.Gain = q.Gain
+			s.Attack = q.Attack
+			s.Decay = q.Decay
+			s.NoiseFloor = q.NoiseFloor
+			s.Phase = float64(now.UnixMilli()) / 1000 * q.Speed
 			musicMu.Lock()
 			old := musicLevels
 			for i := range s.Bands {
-				factor := .65
+				factor := q.Attack
 				if s.Bands[i] < old.Bands[i] {
-					factor = .25
+					factor = q.Decay
 				}
 				s.Bands[i] = old.Bands[i] + factor*(s.Bands[i]-old.Bands[i])
 			}
@@ -361,13 +442,15 @@ func musicVisualWorker(ctx context.Context, done chan struct{}, q musicVisualCon
 			musicMu.Unlock()
 			if q.Target != "ring" {
 				if assistantBusy() {
+					musicOwnsMatrix.Store(false)
 					if ownedMatrix {
 						matrixPost(map[string]string{"action": "stop"})
 						ownedMatrix = false
 					}
 					continue
 				}
-				matrixPost(map[string]any{"action": "play", "frames": [][]byte{musicMatrixFrame(s, q.Mode)}, "delays": []int{100}, "duration": 5, "brightness": q.MatrixBrightness})
+				musicOwnsMatrix.Store(true)
+				matrixPost(map[string]any{"action": "play", "frames": [][]byte{musicMatrixFrame(s, q.Mode)}, "delays": []int{50}, "duration": 5, "brightness": q.MatrixBrightness})
 				ownedMatrix = true
 			}
 		}
@@ -397,8 +480,27 @@ func musicVisualAPI(w http.ResponseWriter, r *http.Request) {
 		response(w, map[string]bool{"ok": true})
 		return
 	}
-	if q.Action != "start" || (q.Target != "both" && q.Target != "ring" && q.Target != "matrix") || (q.Mode != "spectrum" && q.Mode != "wave" && q.Mode != "pulse" && q.Mode != "vu") || q.Gain < .25 || q.Gain > 20 || (q.Duration != 0 && q.Duration < 5) || q.Duration > 86400 || q.Brightness < 0 || q.Brightness > 100 || q.MatrixBrightness < 0 || q.MatrixBrightness > 200 || len(q.Palette) < 2 || len(q.Palette) > 24 {
+	if q.Action != "start" || (q.Target != "both" && q.Target != "ring" && q.Target != "matrix") || !validMusicMode(q.Mode) || q.Gain < .25 || q.Gain > 20 || (q.Duration != 0 && q.Duration < 5) || q.Duration > 86400 || q.Brightness < 0 || q.Brightness > 100 || q.MatrixBrightness < 0 || q.MatrixBrightness > 200 || len(q.Palette) < 2 || len(q.Palette) > 24 {
 		fail(w, "Проверьте настройки визуализации", 400)
+		return
+	}
+	if q.Source == "" {
+		q.Source = "selected"
+	}
+	if q.Attack == 0 {
+		q.Attack = .8
+	}
+	if q.Decay == 0 {
+		q.Decay = .18
+	}
+	if q.NoiseFloor == 0 {
+		q.NoiseFloor = .0003
+	}
+	if q.Speed == 0 {
+		q.Speed = 1
+	}
+	if q.Attack < .05 || q.Attack > 1 || q.Decay < .02 || q.Decay > 1 || q.NoiseFloor < .00001 || q.NoiseFloor > .05 || q.Speed < .1 || q.Speed > 4 {
+		fail(w, "Проверьте скорость, чувствительность и сглаживание", 400)
 		return
 	}
 	if q.ColorSource != "" && q.ColorSource != "palette" && q.ColorSource != "cover" {
@@ -423,7 +525,6 @@ func musicVisualAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	stopAmbientLocked()
 	stopMusicVisualLocked()
 	mu.Lock()
 	previous := cfg
@@ -435,6 +536,9 @@ func musicVisualAPI(w http.ResponseWriter, r *http.Request) {
 		cfg.PaletteSource = q.ColorSource
 		cfg.FlagMotion = q.Motion
 		cfg.Palette = append([]string(nil), q.Palette...)
+		if q.ColorSource == "cover" {
+			cfg.Palette = nil
+		}
 		cfg.Brightness = q.Brightness
 	}
 	mu.Unlock()

@@ -89,11 +89,14 @@ func spotifySearchTarget(data []byte, query string) (int, int, string, error) {
 	})
 	return cards[0].x, cards[0].y, cards[0].name, nil
 }
-func spotifyPlaySearch(query string) error {
+func spotifyPlaySearch(query string, generation int64) error {
 	// The TV release implements voice search but leaves the media-session flag unset.
 	// Its search page requires selecting a result; verify that exact page before input.
-	_, e := helperMedia("search", query, "com.spotify.tv.android")
+	_, e := helperMediaWithGeneration("search", query, "com.spotify.tv.android", generation)
 	if e != nil {
+		if generation != musicSearchGeneration.Load() {
+			return fmt.Errorf("Поиск отменён новой командой")
+		}
 		uri := "spotify:search:" + url.PathEscape(query)
 		out, err := run(10*time.Second, "/system/bin/am", "start", "-a", "android.intent.action.VIEW", "-d", uri, "-p", "com.spotify.tv.android")
 		if err != nil || strings.Contains(out, "Error") {
@@ -105,6 +108,9 @@ func spotifyPlaySearch(query string) error {
 	defer os.Remove(path)
 	var last error
 	for time.Now().Before(deadline) {
+		if generation != musicSearchGeneration.Load() {
+			return fmt.Errorf("Поиск отменён новой командой")
+		}
 		dump, _ := run(3*time.Second, "/system/bin/dumpsys", "media_session")
 		title, artist, playing := sessionMetadata(dump, "com.spotify.tv.android")
 		if playing && spotifyQueryMatches(query, title, artist) {
@@ -140,6 +146,9 @@ func spotifyPlaySearch(query string) error {
 		}
 		if !foreground {
 			return fmt.Errorf("Поиск прерван: на экране открыто другое приложение")
+		}
+		if generation != musicSearchGeneration.Load() {
+			return fmt.Errorf("Поиск отменён новой командой")
 		}
 		if _, e = run(4*time.Second, "/system/bin/input", "tap", fmt.Sprint(x), fmt.Sprint(y)); e != nil {
 			return e

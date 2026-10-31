@@ -309,20 +309,14 @@ func lampWorker(ctx context.Context, done chan struct{}, q lampShow, selected []
 				return
 			}
 			if (q.Mode == "cover" || q.ColorSource == "cover") && now.After(nextCover) {
-				m, e := helperMedia("metadata", "", selectedProvider())
-				if e == nil {
-					if raw, ok := m["palette"].([]any); ok && len(raw) > 1 {
-						palette = nil
-						for _, v := range raw {
-							if s, ok := v.(string); ok {
-								palette = append(palette, s)
-							}
-						}
-					}
+				cover, e := refreshCover()
+				palette = cover.Palette
+				if !cover.Available {
+					setError(fmt.Errorf("%s", cover.Error))
 				} else {
 					setError(e)
 				}
-				nextCover = now.Add(8 * time.Second)
+				nextCover = now.Add(time.Second)
 			}
 			brightness := q.Max
 			if q.Motion == "breathe" {
