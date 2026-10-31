@@ -1,0 +1,15 @@
+on post-fs-data
+    mkdir /dev/cpuset/station-root 0755 root root
+    write /dev/cpuset/station-root/cpus 0
+    write /dev/cpuset/station-root/mems 0
+
+service rootd /odm/bin/rootd
+    class main
+    user root
+    group root shell
+    writepid /dev/cpuset/station-root/tasks
+    oneshot
+    disabled
+
+on property:sys.boot_completed=1
+    start rootd

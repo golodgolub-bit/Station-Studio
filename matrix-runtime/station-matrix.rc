@@ -1,0 +1,9 @@
+service station_matrix /odm/bin/station-matrix
+    class main
+    user root
+    group root shell graphics
+    disabled
+
+on property:sys.boot_completed=1
+    start station_matrix
+

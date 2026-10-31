@@ -1,0 +1,23 @@
+Station Studio
+Copyright 2026 Station Studio contributors
+
+Hardware controller discovery was independently adapted from research in
+YOpenSOS/maxpkg (https://github.com/YOpenSOS/maxpkg), licensed under Apache-2.0.
+Changes include exact controller validation, rejecting ambiguous candidates,
+separate crash recovery, TTL and native assistant event handoff.
+The upstream LICENSE and NOTICE are distributed in third-party/maxpkg/.
+
+YAM is downloaded from its original author at installation time and verified
+against the pinned release hash. Its binary is not bundled here.
+
+Go third-party libraries retain their respective license notices under
+third-party/. Go's standard library is covered by the Go BSD license.
+
+Native remoting framing / early ASR research follows klockky/spotiya
+(https://github.com/klockky/spotiya), MIT. See third-party/spotiya/LICENSE.
+The Buildroot-only transport is not a verified Android Max cancellation method.
+
+The Yandex Station Max product photograph (panel/web/station-max.png) is from
+Yandex documentation and is NOT covered by this project's MIT license:
+https://cdn-viewer.diplodoc.com/docs-assets/alice/rev/r21887279/ru/station/_assets/compare/station-max-black.png
+Yandex retains rights in the photograph, product design and marks.

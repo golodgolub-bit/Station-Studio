@@ -1,0 +1,8 @@
+service station-panel /odm/bin/station-panel-v2 --base /data/local/tmp/station-panel --listen :8787
+    class main
+    user root
+    group root shell audio inet
+    disabled
+
+on property:sys.boot_completed=1
+    start station-panel

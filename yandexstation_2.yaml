@@ -1,0 +1,8 @@
+id: yandexstation_2
+arch: aarch64
+triple: aarch64-unknown-linux-musl
+paths:
+  root: /data/local/station-yam
+  etc: /data/local/station-yam/etc
+  var: /data/local/station-yam/var
+  run: /data/local/station-yam/run

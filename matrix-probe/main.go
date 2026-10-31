@@ -1,0 +1,18 @@
+// Read-only verification of the maxpkg frontal-controller layout.
+// Algorithm reference: YOpenSOS/maxpkg, crates/hal/src/modules/canvas/quasar_pause.rs.
+// No fallback offsets and no memory writes are used by this probe.
+package main
+import("bytes";"encoding/binary";"encoding/json";"fmt";"os";"strconv";"strings")
+type region struct{start,end uint64;perms,path string}
+func main(){
+ dirs,_:=os.ReadDir("/proc");pid:="";for _,d:=range dirs{if _,e:=strconv.Atoi(d.Name());e!=nil{continue};b,_:=os.ReadFile("/proc/"+d.Name()+"/cmdline");if string(bytes.SplitN(b,[]byte{0},2)[0])=="com.yandex.io.sdk"{pid=d.Name();break}};if pid==""{panic("SDK not running")}
+ raw,e:=os.ReadFile("/proc/"+pid+"/maps");if e!=nil{panic(e)};regions:=[]region{};var framebuffer uint64
+ for _,line:=range strings.Split(string(raw),"\n"){p:=strings.Fields(line);if len(p)<5{continue};span:=strings.Split(p[0],"-");a,_:=strconv.ParseUint(span[0],16,64);b,_:=strconv.ParseUint(span[1],16,64);name:="";if len(p)>5{name=strings.Join(p[5:]," ")};regions=append(regions,region{a,b,p[1],name});if name=="/dev/graphics/fb4"{framebuffer=a}}
+ if framebuffer==0{panic("SDK framebuffer mapping absent")};mem,e:=os.Open("/proc/"+pid+"/mem");if e!=nil{panic(e)};defer mem.Close()
+ roPath:=func(addr uint64)string{for _,r:=range regions{if addr>=r.start&&addr<r.end&&strings.HasPrefix(r.perms,"r")&&!strings.HasPrefix(r.perms,"rw")&&(strings.Contains(r.path,".so")||r.path=="/system/priv-app/ServicesIosdk/ServicesIosdk.apk"){return r.path}};return ""}
+ type candidate struct{PID string `json:"pid"`;Pointer string `json:"pointer"`;Flag string `json:"flag"`;Value uint8 `json:"value"`;Relative int `json:"relative"`;Library string `json:"library"`};found:=[]candidate{};diagnostics:=[]map[string]any{};seen:=map[uint64]bool{};needle:=make([]byte,8);binary.LittleEndian.PutUint64(needle,framebuffer);buf:=make([]byte,256<<10)
+ for _,r:=range regions{if !strings.HasPrefix(r.perms,"rw")||!strings.HasSuffix(r.perms,"p")||strings.Contains(r.path,"ashmem")||r.start<0x5000000000||r.end-r.start>64<<20||r.end-r.start<4096{continue}
+  for cur:=r.start;cur<r.end;{length:=uint64(len(buf));if length>r.end-cur{length=r.end-cur};n,_:=mem.ReadAt(buf[:length],int64(cur));if n<24{break};for off:=0;off<=n-24;off+=8{if !bytes.Equal(buf[off:off+8],needle){continue};diagnostics=append(diagnostics,map[string]any{"mapping":r.path,"pointer":fmt.Sprintf("0x%x",cur+uint64(off)),"h":binary.LittleEndian.Uint32(buf[off+16:off+20]),"w":binary.LittleEndian.Uint32(buf[off+20:off+24])});if binary.LittleEndian.Uint32(buf[off+16:off+20])!=16||binary.LittleEndian.Uint32(buf[off+20:off+24])!=25{continue};pointer:=cur+uint64(off);if seen[pointer]{continue};seen[pointer]=true;hdr:=make([]byte,288);if n,_:=mem.ReadAt(hdr,int64(pointer)-256);n!=len(hdr){continue};for rel:=-232;rel<=-192;rel+=8{i1:=256+rel-24;i2:=256+rel-8;vp1:=binary.LittleEndian.Uint64(hdr[i1:i1+8]);vp2:=binary.LittleEndian.Uint64(hdr[i2:i2+8]);lib:=roPath(vp1);diagnostics=append(diagnostics,map[string]any{"relative":rel,"flag":hdr[256+rel],"v1":fmt.Sprintf("0x%x",vp1),"v2":fmt.Sprintf("0x%x",vp2),"lib1":lib,"lib2":roPath(vp2)});if vp2<=vp1||vp2-vp1<0x30||vp2-vp1>0x100||lib==""||roPath(vp2)!=lib{continue};flag:=pointer-uint64(-rel);value:=hdr[256+rel];if value!=1{continue};found=append(found,candidate{pid,fmt.Sprintf("0x%x",pointer),fmt.Sprintf("0x%x",flag),value,rel,lib})}};if uint64(n)<length||length<40{break};cur+=uint64(n)-32}
+ }
+ json.NewEncoder(os.Stdout).Encode(map[string]any{"diagnostics":diagnostics,"candidates":found,"unique":len(found)==1,"pid":pid,"framebuffer":fmt.Sprintf("0x%x",framebuffer)})
+}

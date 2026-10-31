@@ -1,0 +1,7 @@
+dist/
+**/build/
+*.jks
+*.pem
+*.key
+*.apk
+__pycache__/
