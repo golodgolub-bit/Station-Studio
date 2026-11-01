@@ -20,7 +20,19 @@ public class TvActivity extends Activity {
  }
  @Override protected void onActivityResult(int code,int result,Intent data){super.onActivityResult(code,result,data);if(code==901&&files!=null){files.onReceiveValue(result==RESULT_OK&&data!=null&&data.getData()!=null?new Uri[]{data.getData()}:null);files=null;}}
  private boolean keyboardShowing(){android.graphics.Rect r=new android.graphics.Rect();getWindow().getDecorView().getWindowVisibleDisplayFrame(r);return getWindow().getDecorView().getRootView().getHeight()-r.bottom>getWindow().getDecorView().getRootView().getHeight()/5;}
- @Override public boolean dispatchKeyEvent(KeyEvent event){if(web!=null&&!keyboardShowing()&&event.getAction()==KeyEvent.ACTION_DOWN){String direction=event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT?"left":event.getKeyCode()==KeyEvent.KEYCODE_DPAD_RIGHT?"right":event.getKeyCode()==KeyEvent.KEYCODE_DPAD_UP?"up":event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN?"down":null;if(direction!=null){web.evaluateJavascript("if(window.stationTvKey)window.stationTvKey("+JSONObject.quote(direction)+")",null);return true;}if(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_CENTER){web.evaluateJavascript("window.stationTvActivate?window.stationTvActivate():null",value->{if("\"input\"".equals(value))((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(web,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});return true;}}return super.dispatchKeyEvent(event);}
+ @Override public boolean dispatchKeyEvent(KeyEvent event){
+  int code=event.getKeyCode();String direction=code==KeyEvent.KEYCODE_DPAD_LEFT?"left":code==KeyEvent.KEYCODE_DPAD_RIGHT?"right":code==KeyEvent.KEYCODE_DPAD_UP?"up":code==KeyEvent.KEYCODE_DPAD_DOWN?"down":null;
+  boolean activate=code==KeyEvent.KEYCODE_DPAD_CENTER||code==KeyEvent.KEYCODE_ENTER||code==KeyEvent.KEYCODE_NUMPAD_ENTER;
+  if(web!=null&&!keyboardShowing()&&(direction!=null||activate)){
+   // WebView must not receive the key-up: it otherwise clicks the newly focused
+   // element a second time after the JavaScript key-down action has completed.
+   if(event.getAction()!=KeyEvent.ACTION_DOWN)return true;
+   if(direction!=null)web.evaluateJavascript("if(window.stationTvKey)window.stationTvKey("+JSONObject.quote(direction)+")",null);
+   else if(event.getRepeatCount()==0)web.evaluateJavascript("window.stationTvActivate?window.stationTvActivate():null",value->{if("\"input\"".equals(value))((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(web,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});
+   return true;
+  }return super.dispatchKeyEvent(event);
+ }
+
  @Override public void onBackPressed(){if(web!=null)web.evaluateJavascript("window.stationTvBack?window.stationTvBack():false",value->{if(!"true".equals(value))finish();});else super.onBackPressed();}
  @Override public void onDestroy(){if(files!=null)files.onReceiveValue(null);if(web!=null)web.destroy();super.onDestroy();}
 }
