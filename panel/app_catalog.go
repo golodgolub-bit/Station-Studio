@@ -170,7 +170,7 @@ func installOfficialLauncher() {
 		appInstallMu.Unlock()
 	}()
 	var space syscall.Statfs_t
-	if e := syscall.Statfs(base, &space); e != nil || space.Bavail*uint64(space.Bsize) < apkInstallReserve(space, launcherBytes) {
+	if e := syscall.Statfs(base, &space); e != nil || space.Bfree*uint64(space.Bsize) < apkInstallReserve(space, launcherBytes) {
 		failure = fmt.Errorf("Недостаточно места с учётом резерва Android. Освободите около 260 МБ перед установкой")
 		return
 	}

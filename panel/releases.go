@@ -8,7 +8,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 )
 
@@ -79,21 +82,111 @@ func updateAPK(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/vnd.android.package-archive")
 	http.ServeFile(w, r, filepath.Join(base, "releases", "controller.apk"))
 }
+
+type tvInstallJob struct {
+	Active    bool   `json:"active"`
+	Phase     string `json:"phase"`
+	Error     string `json:"error,omitempty"`
+	Version   string `json:"version,omitempty"`
+	Installed bool   `json:"installed"`
+}
+
+var tvInstallMu sync.Mutex
+var currentTVInstall tvInstallJob
+
+func installedTVHashMatches(expected string) bool {
+	out, e := run(5*time.Second, "/system/bin/pm", "path", "local.station.studio")
+	if e != nil {
+		return false
+	}
+	path := strings.TrimPrefix(strings.TrimSpace(out), "package:")
+	if !trustedHelperAPKPath(path) {
+		return false
+	}
+	data, e := os.ReadFile(path)
+	if e != nil {
+		return false
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]) == expected
+}
 func tvInstallAPI(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		fail(w, "POST", 405)
+	if r.Method == "GET" {
+		tvInstallMu.Lock()
+		job := currentTVInstall
+		tvInstallMu.Unlock()
+		response(w, job)
 		return
 	}
-	if _, e := releaseInfo("station-tv"); e != nil {
+	if r.Method != "POST" {
+		fail(w, "Нужен GET или POST", 405)
+		return
+	}
+	m, e := releaseInfo("station-tv")
+	if e != nil {
 		fail(w, "Проверенный выпуск для станции не размещён", 404)
 		return
 	}
-	out, e := run(75*time.Second, "/system/bin/pm", "install", "-r", filepath.Join(base, "releases", "station-tv.apk"))
-	if e != nil || !strings.Contains(out, "Success") {
-		fail(w, out, 500)
+	tvInstallMu.Lock()
+	if currentTVInstall.Active {
+		tvInstallMu.Unlock()
+		fail(w, "Установка уже выполняется", 409)
 		return
 	}
-	visualService("observe")
+	currentTVInstall = tvInstallJob{Active: true, Phase: "Проверка установленной версии", Version: m.Name}
+	tvInstallMu.Unlock()
+	// The app being updated may own the requesting WebView. Acknowledge before
+	// PackageManager stops it; clients reconnect and read the job instead of
+	// interpreting a severed connection as a failed or repeatable installation.
+	go installTVWorker(m)
+	w.WriteHeader(http.StatusAccepted)
+	response(w, map[string]any{"ok": true, "started": true, "version": m.Name})
+}
+func installTVWorker(m releaseManifest) {
+	set := func(phase string) { tvInstallMu.Lock(); currentTVInstall.Phase = phase; tvInstallMu.Unlock() }
+	var failure error
+	defer func() {
+		if p := recover(); p != nil {
+			os.WriteFile(filepath.Join(base, "tv-install-error.txt"), append([]byte(fmt.Sprintln(p)), debug.Stack()...), 0600)
+			failure = fmt.Errorf("Внутренняя ошибка подготовки приложения; проверьте установленную версию перед повтором")
+		}
+		tvInstallMu.Lock()
+		defer tvInstallMu.Unlock()
+		currentTVInstall.Active = false
+		if failure != nil {
+			currentTVInstall.Error = failure.Error()
+			currentTVInstall.Phase = "Установка не подтверждена"
+		} else {
+			currentTVInstall.Phase = "Актуальная версия установлена"
+			currentTVInstall.Installed = true
+		}
+	}()
+	if !installedTVHashMatches(m.SHA) {
+		var space syscall.Statfs_t
+		if e := syscall.Statfs(base, &space); e != nil || space.Bfree*uint64(space.Bsize) < apkInstallReserve(space, uint64(m.Size)) {
+			failure = fmt.Errorf("Недостаточно свободной памяти с учётом резерва Android. Освободите около 260 МБ и повторите проверку")
+			return
+		}
+		set("Установка на станцию")
+		out, e := run(75*time.Second, "/system/bin/pm", "install", "-r", filepath.Join(base, "releases", "station-tv.apk"))
+		if e != nil || !strings.Contains(out, "Success") {
+			// A timeout is ambiguous. Verify the installed bytes, never replay pm.
+			if !installedTVHashMatches(m.SHA) {
+				failure = fmt.Errorf("Android не подтвердил установку: %s", strings.TrimSpace(out))
+				return
+			}
+		}
+		if !installedTVHashMatches(m.SHA) {
+			failure = fmt.Errorf("Контрольная сумма установленного приложения не совпала")
+			return
+		}
+	}
+	set("Подключение локального управления")
+	if e := visualService("observe"); e != nil {
+		failure = e
+		return
+	}
+	var e error
 	for i := 0; i < 15; i++ {
 		e = helperWrite("panel.key", []byte(token))
 		if e == nil {
@@ -102,8 +195,7 @@ func tvInstallAPI(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(200 * time.Millisecond)
 	}
 	if e != nil {
-		fail(w, e.Error(), 500)
+		failure = e
 		return
 	}
-	response(w, map[string]bool{"ok": true})
 }
