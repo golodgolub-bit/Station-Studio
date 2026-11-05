@@ -54,8 +54,8 @@ $('matrixLibraryDelete').onclick=async()=>{const id=$('matrixLibrarySelect').val
 document.addEventListener('visibilitychange',()=>{if(document.hidden)stopMatrixPreview()});
 matrixToneLabels();refreshMatrixTimeline();drawMatrix();
 
-$('matrixReactiveStart').onclick=async()=>{try{await api('matrix',{action:'play',reactive:$('matrixReactive').value,gain:Number($('matrixMicGain').value),duration:Number($('matrixDuration').value),brightness:Number($('matrixBrightness').value)});$('matrixState').textContent='Реагируем на звуки комнаты';toast('Микрофоны станции · визуализация включена')}catch(e){toast(e.message)}};
-$('matrixReactiveStop').onclick=()=>$('matrixStop').click();
+$('matrixReactiveStart').onclick=async()=>{try{await api('music/visual',{action:'start',source:'room',mode:$('matrixReactive').value,target:$('roomTarget').value,palette:visualPalettes[$('roomPalette').value],gain:Number($('matrixMicGain').value),duration:Number($('matrixDuration').value),brightness:Number($('musicVisualBrightness').value),matrixBrightness:Number($('matrixBrightness').value)});$('matrixState').textContent='Микрофоны станции · кольцо и дисплей';toast('Визуализация звуков комнаты включена')}catch(e){toast(e.message)}};
+$('matrixReactiveStop').onclick=()=>api('music/visual',{action:'stop'}).then(()=>toast('Визуализация выключена')).catch(e=>toast(e.message));
 
 $('aliceVisualSet').onclick=async()=>{if($('aliceLibrary').value){await assignAliceLibrary();return}if(!confirm('Назначить текущую анимацию выбранному состоянию Алисы? Оригинал будет сохранён.'))return;try{await api('alice/visual',{action:'set',slot:$('aliceVisualSlot').value,frames:matrixFrames.map(f=>frame64(f.map(correctMatrix))),delays:matrixDelays});$('aliceVisualInfo').textContent='Замена сохранена. Нажмите «Применить», когда Алиса закончит текущий ответ.';toast('Анимация Алисы сохранена')}catch(e){toast(e.message)}};
 $('aliceVisualRestore').onclick=async()=>{try{await api('alice/visual',{action:'restore',slot:$('aliceVisualSlot').value});$('aliceVisualInfo').textContent='Оригинал возвращён. Для применения перезапустите Алису.'}catch(e){toast(e.message)}};

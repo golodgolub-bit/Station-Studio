@@ -6,3 +6,6 @@ $('aliceImport').onclick=()=>{window.aliceImportPending=true;$('matrixFile').cli
 const originalMatrixImport=$('matrixFile').onchange;
 $('matrixFile').onchange=async e=>{try{const imported=await originalMatrixImport(e);if(window.aliceImportPending&&imported){$('aliceLibrary').value='';aliceEditorPreview();$('aliceVisualInfo').textContent='Предпросмотр готов. Выберите состояние Алисы и нажмите «Назначить показанную анимацию».'}}finally{window.aliceImportPending=false}};
 $('aliceOpenEditor').onclick=()=>{studioPane('draw');toast('Создайте кадры, затем вернитесь в «Алиса» и назначьте их нужному состоянию')};
+
+async function privacyNetwork(){try{const j=await(await api('privacy/connections')).json();$('privacyNetworkNote').textContent=j.note;$('privacyNetworkList').replaceChildren(...j.connections.map(c=>{const row=element('div',undefined,'privacy-network-row');row.append(element('b',c.packages.length>3?'Общий UID '+c.uid+' · '+c.packages.length+' пакетов':c.packages.join(', ')),element('small',c.address+':'+c.port));return row}));if(!j.connections.length)$('privacyNetworkList').append(element('p','Активных внешних TCP-соединений на момент проверки нет.'))}catch(e){toast(e.message)}}
+$('privacyNetworkRefresh').onclick=privacyNetwork;

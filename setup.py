@@ -57,7 +57,7 @@ try:
   script='set -eu\n/system/bin/sh '+stage+'/rollback-device.sh'
  else:
   payload=ROOT/'payload';manifest=json.loads((ROOT/'manifest.json').read_text(encoding='utf-8'))
-  required={'station-panel-v2','station-matrix','matrix-probe','station-tv.apk','controller.apk','controller.json','station-tv.json','station-panel.rc','station-matrix.rc','rootd-cpu0.rc','yandexstation_2.yaml'}
+  required={'station-panel-v2','station-matrix','matrix-probe','station-tv.apk','controller.apk','controller.json','station-tv.json','privapp-permissions-station-studio.xml','station-panel.rc','station-matrix.rc','rootd-cpu0.rc','yandexstation_2.yaml'}
   if set(manifest)!=required:raise RuntimeError('Неполный или неизвестный состав выпуска')
   for name,digest in manifest.items():
    if not re.fullmatch(r'[a-zA-Z0-9_.-]+',name):raise RuntimeError('Неверный файл выпуска')

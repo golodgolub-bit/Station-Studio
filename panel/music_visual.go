@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -26,6 +27,13 @@ type musicTap struct {
 	progress        time.Time
 	pid             string
 }
+
+var errMusicIdle = errors.New("Музыка на паузе — ожидаем продолжения")
+
+func sourcePackageMatches(name, pkg string) bool {
+	return name == pkg || strings.HasPrefix(name, pkg+":")
+}
+
 type musicVisualConfig struct {
 	Action           string   `json:"action"`
 	Mode             string   `json:"mode"`
@@ -108,7 +116,7 @@ func openMusicTap(source string) (*musicTap, error) {
 			pid = ""
 			for _, candidate := range activeMediaPIDs(dump) {
 				name := strings.SplitN(read("/proc/"+candidate+"/cmdline"), "\x00", 2)[0]
-				if name == selectedProvider() || strings.HasPrefix(name, selectedProvider()+":") {
+				if sourcePackageMatches(name, selectedProvider()) {
 					pid = candidate
 					break
 				}
@@ -202,7 +210,7 @@ func (t *musicTap) sample() (musicLight, error) {
 		t.last = position
 	}
 	if time.Since(t.progress) > 300*time.Millisecond {
-		return result, fmt.Errorf("Музыка на паузе")
+		return result, errMusicIdle
 	}
 	count := 2048
 	if t.capacity < count {
@@ -344,22 +352,40 @@ func musicMatrixFrame(s musicLight, mode string) []byte {
 	}
 	return f
 }
-func matrixPost(value any) {
+func matrixPost(value any) error {
 	b, _ := json.Marshal(value)
 	client := http.Client{Transport: matrixClient.Transport, Timeout: 2 * time.Second}
-	if r, e := client.Post("http://matrix/", "application/json", bytes.NewReader(b)); e == nil {
-		io.Copy(io.Discard, io.LimitReader(r.Body, 8192))
-		r.Body.Close()
+	r, e := client.Post("http://matrix/", "application/json", bytes.NewReader(b))
+	if e != nil {
+		return fmt.Errorf("Нет связи с LED-дисплеем: %w", e)
 	}
+	defer r.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(r.Body, 8192))
+	if r.StatusCode != http.StatusOK {
+		var result struct {
+			Error string `json:"error"`
+		}
+		json.Unmarshal(body, &result)
+		if result.Error == "" {
+			result.Error = "Команда дисплея отклонена"
+		}
+		return fmt.Errorf("%s", result.Error)
+	}
+	return nil
 }
 func musicVisualWorker(ctx context.Context, done chan struct{}, q musicVisualConfig, previous Config) {
 	defer close(done)
 	var tap *musicTap
+	var room *roomAudioTap
 	ownedMatrix := false
+	nextMatrix := time.Time{}
 	defer func() {
 		musicOwnsMatrix.Store(false)
 		if tap != nil {
 			tap.f.Close()
+		}
+		if room != nil {
+			room.close()
 		}
 		if ownedMatrix {
 			matrixPost(map[string]string{"action": "stop"})
@@ -392,9 +418,13 @@ func musicVisualWorker(ctx context.Context, done chan struct{}, q musicVisualCon
 			if q.Duration != 0 && now.After(deadline) {
 				return
 			}
-			if tap == nil && !now.Before(retry) {
+			if tap == nil && room == nil && !now.Before(retry) {
 				var e error
-				tap, e = openMusicTap(q.Source)
+				if q.Source == "room" {
+					room, e = openRoomAudioTap()
+				} else {
+					tap, e = openMusicTap(q.Source)
+				}
 				musicMu.Lock()
 				if e != nil {
 					musicLastError = e.Error()
@@ -404,7 +434,7 @@ func musicVisualWorker(ctx context.Context, done chan struct{}, q musicVisualCon
 				musicMu.Unlock()
 				retry = now.Add(500 * time.Millisecond)
 			}
-			if tap == nil {
+			if tap == nil && room == nil {
 				musicOwnsMatrix.Store(false)
 				if ownedMatrix {
 					matrixPost(map[string]string{"action": "stop"})
@@ -412,14 +442,33 @@ func musicVisualWorker(ctx context.Context, done chan struct{}, q musicVisualCon
 				}
 				continue
 			}
-			s, e := tap.sample()
+			var s musicLight
+			var e error
+			if room != nil {
+				s, e = room.musicSample()
+			} else {
+				s, e = tap.sample()
+			}
 			if e != nil {
-				tap.f.Close()
-				tap = nil
+				// Keep the validated mapping on pause. Rediscovering AudioFlinger
+				// every half-second added seconds of lag when playback resumed.
+				if tap != nil && !errors.Is(e, errMusicIdle) {
+					tap.f.Close()
+					tap = nil
+				}
+				if room != nil {
+					room.close()
+					room = nil
+				}
 				musicMu.Lock()
 				musicLastError = e.Error()
 				musicLevels = musicLight{}
 				musicMu.Unlock()
+				musicOwnsMatrix.Store(false)
+				if ownedMatrix {
+					matrixPost(map[string]string{"action": "stop"})
+					ownedMatrix = false
+				}
 				continue
 			}
 			s.Mode = q.Mode
@@ -438,7 +487,9 @@ func musicVisualWorker(ctx context.Context, done chan struct{}, q musicVisualCon
 				s.Bands[i] = old.Bands[i] + factor*(s.Bands[i]-old.Bands[i])
 			}
 			musicLevels = s
-			musicLastError = ""
+			if q.Target == "ring" {
+				musicLastError = ""
+			}
 			musicMu.Unlock()
 			if q.Target != "ring" {
 				if assistantBusy() {
@@ -449,9 +500,25 @@ func musicVisualWorker(ctx context.Context, done chan struct{}, q musicVisualCon
 					}
 					continue
 				}
+				if now.Before(nextMatrix) {
+					continue
+				}
 				musicOwnsMatrix.Store(true)
-				matrixPost(map[string]any{"action": "play", "frames": [][]byte{musicMatrixFrame(s, q.Mode)}, "delays": []int{50}, "duration": 5, "brightness": q.MatrixBrightness})
-				ownedMatrix = true
+				// Runtime accepts delays of 66 ms or more. Invalid 50 ms frames
+				// used to be rejected silently, leaving the old display visible.
+				err := matrixPost(map[string]any{"action": "play", "frames": [][]byte{musicMatrixFrame(s, q.Mode)}, "delays": []int{100}, "duration": 5, "brightness": q.MatrixBrightness})
+				nextMatrix = now.Add(100 * time.Millisecond)
+				if err != nil {
+					musicOwnsMatrix.Store(false)
+					musicMu.Lock()
+					musicLastError = err.Error()
+					musicMu.Unlock()
+				} else {
+					ownedMatrix = true
+					musicMu.Lock()
+					musicLastError = ""
+					musicMu.Unlock()
+				}
 			}
 		}
 	}
@@ -459,7 +526,17 @@ func musicVisualWorker(ctx context.Context, done chan struct{}, q musicVisualCon
 func musicVisualAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		musicMu.Lock()
-		response(w, map[string]any{"active": musicCancel != nil, "config": musicConfig, "error": musicLastError, "level": musicLevels.Level})
+		state := "off"
+		if musicCancel != nil {
+			state = "running"
+			if musicLastError != "" {
+				state = "waiting"
+			}
+			if assistantBusy() {
+				state = "native-priority"
+			}
+		}
+		response(w, map[string]any{"active": musicCancel != nil, "state": state, "config": musicConfig, "error": musicLastError, "level": musicLevels.Level, "matrixOwned": musicOwnsMatrix.Load()})
 		musicMu.Unlock()
 		return
 	}
@@ -511,7 +588,7 @@ func musicVisualAPI(w http.ResponseWriter, r *http.Request) {
 		fail(w, "Выберите анимацию цветов", 400)
 		return
 	}
-	if q.Source != "" && q.Source != "selected" && q.Source != "system" {
+	if q.Source != "" && q.Source != "selected" && q.Source != "system" && q.Source != "room" {
 		fail(w, "Выберите источник звука", 400)
 		return
 	}

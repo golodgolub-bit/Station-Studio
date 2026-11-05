@@ -12,11 +12,11 @@ case "$suffix" in ''|*[!0-9a-f]*) exit 2;; esac
 [ "$(getprop ro.build.version.sdk)" = 28 ]
 [ "$(cat /sys/fs/selinux/enforce)" = 0 ]
 set -- $(df -k /data | tail -n 1)
-[ "$4" -ge 135000 ] || { echo 'Keep at least 135 MB free in /data before installation';exit 5; }
+[ "$4" -ge 260000 ] || { echo 'Keep at least 260 MB free in /data before installation';exit 5; }
 set -- $(df -k /odm | tail -n 1)
 [ "$4" -ge 25000 ] || { echo 'Not enough ODM space';exit 5; }
 while read -r sum file; do
- case "$file" in station-panel-v2|station-matrix|matrix-probe|station-tv.apk|controller.apk|controller.json|station-tv.json|station-panel.rc|station-matrix.rc|rootd-cpu0.rc|yam|yandexstation_2.yaml) ;; *) exit 3;; esac
+ case "$file" in station-panel-v2|station-matrix|matrix-probe|station-tv.apk|controller.apk|controller.json|station-tv.json|privapp-permissions-station-studio.xml|station-panel.rc|station-matrix.rc|rootd-cpu0.rc|yam|yandexstation_2.yaml) ;; *) exit 3;; esac
  [ "$(sha256sum "$stage/$file" | cut -d ' ' -f1)" = "$sum" ]
 done < "$stage/SHA256SUMS"
 base=/data/local/tmp/station-panel
@@ -28,7 +28,7 @@ chmod 700 "$backup" /data/local/station-matrix /data/local/station-yam /data/loc
 if [ -f /odm/etc/init/station-panel.rc ]; then
  grep -q '/odm/bin/station-panel-v2 --base ' /odm/etc/init/station-panel.rc || { echo 'Existing panel init is not Station Studio v2; preserve its access bootstrap and migrate it first'; exit 4; }
 fi
-for target in bin/station-panel-v2 bin/station-matrix etc/init/station-panel.rc etc/init/station-matrix.rc; do
+for target in bin/station-panel-v2 bin/station-matrix etc/init/station-panel.rc etc/init/station-matrix.rc priv-app/StationStudio/StationStudio.apk etc/permissions/privapp-permissions-station-studio.xml; do
  name=$(echo "$target" | tr / _)
  if [ ! -e "$backup/$name.saved" ]; then
   if [ -f "/odm/$target" ]; then cp "/odm/$target" "$backup/$name"; else touch "$backup/$name.absent"; fi
@@ -54,6 +54,11 @@ put(){
  chcon "$label" "$target.studio-new"
  mv "$target.studio-new" "$target"
 }
+mkdir -p /odm/priv-app/StationStudio /odm/etc/permissions
+chmod 755 /odm/priv-app/StationStudio
+chcon u:object_r:vendor_app_file:s0 /odm/priv-app/StationStudio
+put station-tv.apk /odm/priv-app/StationStudio/StationStudio.apk 644 u:object_r:vendor_app_file:s0
+put privapp-permissions-station-studio.xml /odm/etc/permissions/privapp-permissions-station-studio.xml 644 u:object_r:vendor_configs_file:s0
 put station-panel-v2 /odm/bin/station-panel-v2 755 u:object_r:adbd_exec:s0
 put station-matrix /odm/bin/station-matrix 755 u:object_r:adbd_exec:s0
 put station-panel.rc /odm/etc/init/station-panel.rc 644 u:object_r:vendor_configs_file:s0

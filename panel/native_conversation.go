@@ -29,7 +29,7 @@ func nativeConversationWorker() {
 				return
 			}
 			path := strings.TrimPrefix(strings.TrimSpace(out), "package:")
-			if !strings.HasPrefix(path, "/data/app/local.station.studio-") || !strings.HasSuffix(path, "/base.apk") || strings.ContainsAny(path, "\n\r ") {
+			if !trustedHelperAPKPath(path) {
 				return
 			}
 			// Use the same shell domain transition as other Android framework calls.

@@ -129,7 +129,45 @@ func builtInVoice(query string, settings voiceSettings) (voiceRule, bool) {
 }
 func commandCatalogAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
-		response(w, map[string]any{"commands": commandCatalog()})
+		scenarioMu.Lock()
+		settings := voiceCfg
+		custom := append([]voiceRule{}, voiceCfg.Rules...)
+		scenarioMu.Unlock()
+		if r.URL.Query().Get("format") == "text" {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("Content-Disposition", `attachment; filename="Station-Studio-commands.txt"`)
+			fmt.Fprint(w, "Station Studio — голосовые команды\n\nСначала скажите «Алиса». Свои сценарии имеют приоритет. Короткие команды без имени работают только с активным выбранным музыкальным плеером. Поддержка перемотки, повтора и поиска зависит от приложения.\n")
+			for _, c := range commandCatalog() {
+				enabled := settings.BuiltinCommands
+				for _, id := range settings.BuiltinDisabled {
+					if id == c.ID {
+						enabled = false
+					}
+				}
+				state := "включено"
+				if !enabled {
+					state = "голос отключён"
+				}
+				fmt.Fprintf(w, "%s · %s · %s\n", c.Group, c.Name, state)
+				for _, phrase := range c.Phrases {
+					fmt.Fprintf(w, "  Алиса, %s\n", phrase)
+				}
+				fmt.Fprintln(w)
+			}
+			for _, c := range custom {
+				state := "включено"
+				if !c.Enabled {
+					state = "отключено"
+				}
+				fmt.Fprintf(w, "Мои сценарии · %s · %s\n", c.Name, state)
+				for _, phrase := range c.Phrases {
+					fmt.Fprintf(w, "  Алиса, %s\n", phrase)
+				}
+			}
+			fmt.Fprintln(w, "Параметры: «перемотай вперёд на 40 секунд», «перемотай назад на две минуты», «громкость 35». Громкость: от 0 до 100.\nСвои фразы и действия: раздел «Команды → Создать сценарий».")
+			return
+		}
+		response(w, map[string]any{"commands": commandCatalog(), "customRules": custom})
 		return
 	}
 	if r.Method != "POST" {

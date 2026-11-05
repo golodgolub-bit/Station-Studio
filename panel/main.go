@@ -287,10 +287,15 @@ func main() {
 	mux.HandleFunc("/api/scenarios", auth(scenariosAPI))
 	mux.HandleFunc("/api/scenarios/run", auth(scenarioRunAPI))
 	mux.HandleFunc("/api/music/providers", auth(providersAPI))
+	mux.HandleFunc("/api/music/session", auth(musicSessionAPI))
+	mux.HandleFunc("/api/music/search", auth(musicLibrarySearchAPI))
+	mux.HandleFunc("/api/apps/compatibility", auth(appCompatibilityAPI))
+	mux.HandleFunc("/api/apps/catalog", auth(appCatalogAPI))
 	mux.HandleFunc("/api/music/play", auth(musicPlayAPI))
 	mux.HandleFunc("/api/music/album", auth(albumAPI))
 	mux.HandleFunc("/api/music/cover", auth(coverAPI))
 	mux.HandleFunc("/api/privacy", auth(privacyAPI))
+	mux.HandleFunc("/api/privacy/connections", auth(privacyConnectionsAPI))
 	mux.HandleFunc("/api/privacy/app", auth(privacyAppAPI))
 	mux.HandleFunc("/api/maintenance", auth(maintenanceAPI))
 	mux.HandleFunc("/api/ambient", auth(ambientAPI))
@@ -308,6 +313,7 @@ func main() {
 	mux.HandleFunc("/api/plugins", auth(plugins))
 	mux.HandleFunc("/api/plugins/upload", auth(pluginUpload))
 	mux.HandleFunc("/api/plugins/action", auth(pluginAction))
+	mux.HandleFunc("/api/plugins/settings", auth(pluginSettingsAPI))
 	mux.HandleFunc("/api/matrix", auth(matrixAPI))
 	mux.HandleFunc("/api/matrix/media", auth(matrixMedia))
 	mux.HandleFunc("/api/matrix/library", auth(matrixLibrary))
@@ -425,6 +431,12 @@ func action(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		out, e = launch(q.Package)
+	case "app-settings":
+		if !allowed.MatchString(q.Package) {
+			fail(w, "Некорректное приложение", 400)
+			return
+		}
+		out, e = run(8*time.Second, "/system/bin/am", "start", "-a", "android.settings.APPLICATION_DETAILS_SETTINGS", "-d", "package:"+q.Package)
 	case "text":
 		if len(q.Text) > 1200 {
 			fail(w, "Слишком длинный текст", 400)

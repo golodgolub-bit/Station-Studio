@@ -1,0 +1,1 @@
+(()=>{let key='';const frame=document.querySelector('iframe');function connect(){if(!key)return;const child=frame.contentWindow;if(child?.stationNativeConnect)child.stationNativeConnect(key)}window.stationNativeConnect=value=>{if(typeof value!=='string'||!/^[a-f0-9]{48}$/.test(value))return;key=value;connect()};frame.addEventListener('load',connect)})();

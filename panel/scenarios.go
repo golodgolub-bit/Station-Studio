@@ -395,6 +395,7 @@ func voiceEvent(w http.ResponseWriter, r *http.Request) {
 		Text        string `json:"text"`
 		ID          string `json:"requestId"`
 		Kind        string `json:"kind"`
+		Decision    string `json:"decision"`
 		AlarmActive *bool  `json:"alarmActive"`
 	}
 	if json.NewDecoder(r.Body).Decode(&q) != nil {
@@ -421,9 +422,13 @@ func voiceEvent(w http.ResponseWriter, r *http.Request) {
 			delete(voiceRequests, id)
 		}
 	}
-	_, duplicate := voiceRequests[q.ID]
+	requestKey := q.ID
+	if q.Kind == "native-music" {
+		requestKey += ":native-music"
+	}
+	_, duplicate := voiceRequests[requestKey]
 	if q.ID != "" && q.Text != "" && !duplicate {
-		voiceRequests[q.ID] = now
+		voiceRequests[requestKey] = now
 	}
 	rules := append([]voiceRule{}, voiceCfg.Rules...)
 	routing := voiceCfg.MusicRouting
@@ -463,6 +468,27 @@ func voiceEvent(w http.ResponseWriter, r *http.Request) {
 		voiceDiagnostic = map[string]any{"text": q.Text, "route": kind, "time": time.Now().Unix()}
 		scenarioMu.Unlock()
 	}
+	if routing && q.Kind == "native-music" && q.Decision == "music-subscription" {
+		if query, ok := nativeMusicQuery(q.Text); ok {
+			setDiagnostic("native-music")
+			handledVoice(w)
+			go func() {
+				e := playMusicQuery(query)
+				scenarioMu.Lock()
+				if e != nil {
+					scenarioLast = "Музыка: " + e.Error()
+				} else {
+					scenarioLast = "Песня запущена в выбранном плеере"
+				}
+				scenarioMu.Unlock()
+			}()
+			return
+		}
+	}
+	if q.Kind == "native-music" {
+		response(w, map[string]bool{"ok": true, "handled": false})
+		return
+	}
 	for _, rule := range rules {
 		if !rule.Enabled {
 			continue
@@ -485,23 +511,6 @@ func voiceEvent(w http.ResponseWriter, r *http.Request) {
 			go runVoiceScenario(rule)
 		}
 		return
-	}
-	if routing {
-		if query, ok := musicQuery(q.Text); ok {
-			setDiagnostic("music")
-			handledVoice(w)
-			go func() {
-				e := playMusicQuery(query)
-				scenarioMu.Lock()
-				if e != nil {
-					scenarioLast = "Музыка: " + e.Error()
-				} else {
-					scenarioLast = "Песня запущена в выбранном плеере"
-				}
-				scenarioMu.Unlock()
-			}()
-			return
-		}
 	}
 	setDiagnostic("native")
 	response(w, map[string]bool{"ok": true, "handled": false})

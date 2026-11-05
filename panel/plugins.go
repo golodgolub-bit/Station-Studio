@@ -469,6 +469,15 @@ func startPluginService(name, service string, persist bool) error {
 	if hex.EncodeToString(sum[:]) != m.Files[spec.Exec[0]] {
 		return fmt.Errorf("SHA-256 программы не совпал с пакетом")
 	}
+	if m.Files[pluginPanelFile] != "" {
+		p, err := readPluginPanel(m)
+		if err != nil {
+			return err
+		}
+		if err = writePluginSettings(name, pluginSettingsValues(name, p)); err != nil {
+			return err
+		}
+	}
 	key := name + "/" + service
 	servicesMu.Lock()
 	s := managedPlugins[key]
@@ -500,6 +509,9 @@ func startPluginService(name, service string, persist bool) error {
 			expand := func(value string) string { return os.Expand(value, func(k string) string { return env[k] }) }
 			for k, v := range spec.Env {
 				env[k] = expand(v)
+			}
+			if m.Files[pluginPanelFile] != "" {
+				env["STATION_STUDIO_SETTINGS"] = pluginSettingsPath(name)
 			}
 			for i, argument := range spec.Exec[1:] {
 				cmd.Args[i+1] = expand(argument)

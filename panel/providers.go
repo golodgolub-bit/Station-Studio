@@ -61,7 +61,7 @@ func helperMediaWithGeneration(operation, query, pkg string, generation int64) (
 		return nil, e
 	}
 	path := strings.TrimPrefix(strings.TrimSpace(out), "package:")
-	if !strings.HasPrefix(path, "/data/app/local.station.studio-") || !strings.HasSuffix(path, "/base.apk") || strings.ContainsAny(path, "\n\r ") {
+	if !trustedHelperAPKPath(path) {
 		return nil, fmt.Errorf("Не установлен помощник панели")
 	}
 	out, e = run(15*time.Second, "/system/bin/env", "CLASSPATH="+path, "/system/bin/app_process", "/system/bin", "local.station.studio.RootMedia", operation, pkg, query)

@@ -1,6 +1,6 @@
 """Portable source build. Set ANDROID_HOME, JAVA_HOME, STUDIO_KEYSTORE and STUDIO_KEY_PASS."""
 from pathlib import Path
-import argparse, os, shutil, subprocess, zipfile
+import argparse, os, shutil, subprocess, zipfile, sys
 
 ROOT=Path(__file__).resolve().parent
 parser=argparse.ArgumentParser();parser.add_argument('--android',action='store_true');args=parser.parse_args()
@@ -19,11 +19,17 @@ if args.android:
  for folder,name in [('controller','Station-Studio.apk'),('voice','Station-Studio-TV.apk')]:
   src=ROOT/'panel'/folder;build=out/('build-'+folder);build.mkdir(exist_ok=True)
   assets=build/'assets';assets.mkdir(exist_ok=True)
-  run([jdk/('javac'+exe),'-source','8','-target','8','-encoding','UTF-8','-classpath',platform,'-d',build,*src.glob('*.java')])
-  run([bt/('d8.bat'if windows else'd8'),'--lib',platform,'--min-api','23','--output',build,*build.rglob('*.class')])
+  deps=[]
+  if folder=='voice':
+   run([sys.executable,ROOT/'fetch_android_media_deps.py'])
+   deps=[ROOT/'android-media-deps'/(name+'.jar') for name in ['media','core','versionedparcelable','collection','media3-session','media3-common','media3-datasource','media3-database','exifinterface','lifecycle-java','annotation-java','guava','failureaccess']]
+   notices=assets/'third-party';shutil.copytree(ROOT/'third-party/android-media',notices,dirs_exist_ok=True)
+  run([jdk/('javac'+exe),'-source','8','-target','8','-encoding','UTF-8','-classpath',os.pathsep.join(map(str,[platform,*deps])),'-d',build,*src.glob('*.java')])
+  run([bt/('d8.bat'if windows else'd8'),'--lib',platform,'--min-api','23','--output',build,*build.rglob('*.class'),*deps])
   unsigned=build/'unsigned.apk'
   run([bt/('aapt'+exe),'package','-f','-M',src/'AndroidManifest.xml','-A',assets,'-S',src/'res','-I',platform,'-F',unsigned])
-  with zipfile.ZipFile(unsigned,'a')as archive:archive.write(build/'classes.dex','classes.dex')
+  with zipfile.ZipFile(unsigned,'a')as archive:
+   for dex in build.glob('classes*.dex'):archive.write(dex,dex.name)
   run([jdk/('java'+exe),'-jar',bt/'lib/apksigner.jar','sign','--ks',key,'--ks-pass','env:STUDIO_KEY_PASS','--out',out/name,unsigned])
   run([jdk/('java'+exe),'-jar',bt/'lib/apksigner.jar','verify',out/name])
 print('Builds saved in dist. Private signing keys and connected-device data are not included.')

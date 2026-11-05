@@ -21,3 +21,6 @@ The Yandex Station Max product photograph (panel/web/station-max.png) is from
 Yandex documentation and is NOT covered by this project's MIT license:
 https://cdn-viewer.diplodoc.com/docs-assets/alice/rev/r21887279/ru/station/_assets/compare/station-max-black.png
 Yandex retains rights in the photograph, product design and marks.
+
+Android media client dependencies (AndroidX and Guava) are licensed under
+Apache-2.0. See third-party/android-media/LICENSE and NOTICE.

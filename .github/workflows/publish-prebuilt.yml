@@ -1,0 +1,67 @@
+name: Publish verified prebuilt release
+
+'on':
+  push:
+    branches: [main]
+    paths: [release-publish.json]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-station-studio
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Download and verify public artifacts
+        shell: python
+        run: |
+          import hashlib, json, os, pathlib, re, urllib.parse, urllib.request
+          repo, commit = os.environ['GITHUB_REPOSITORY'], os.environ['GITHUB_SHA']
+          source = 'https://raw.githubusercontent.com/' + repo + '/' + commit + '/release-publish.json'
+          with urllib.request.urlopen(source, timeout=30) as response:
+              manifest = json.load(response)
+          version = manifest['version']
+          if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version):
+              raise RuntimeError('Invalid release version')
+          expected = {'Station-Studio-'+version+'.apk', 'Station-Studio-TV-'+version+'.apk',
+                      'Station-Studio-Max-0921.zip', 'Station-Studio-Source.zip',
+                      'INSTALL-RU.md', 'SHA256SUMS.txt', 'channel.json'}
+          if set(manifest['assets']) != expected:
+              raise RuntimeError('Unexpected release contents')
+          origin = manifest['source'].rstrip('/')
+          url = urllib.parse.urlparse(origin)
+          if url.scheme != 'https' or not url.hostname.endswith('.trycloudflare.com') or url.path:
+              raise RuntimeError('Invalid temporary artifact origin')
+          output = pathlib.Path('dist'); output.mkdir()
+          for name, info in manifest['assets'].items():
+              if not 0 < info['size'] < 64 * 1024 * 1024:
+                  raise RuntimeError('Invalid artifact size')
+              with urllib.request.urlopen(origin + '/' + name, timeout=90) as response:
+                  raw = response.read(info['size'] + 1)
+              if len(raw) != info['size'] or hashlib.sha256(raw).hexdigest() != info['sha256']:
+                  raise RuntimeError('Artifact integrity check failed: ' + name)
+              (output / name).write_bytes(raw)
+              print('Verified:', name)
+          pathlib.Path('release-notes.md').write_text(manifest['notes'], encoding='utf-8')
+          pathlib.Path('release-tag').write_text('v' + version, encoding='ascii')
+      - name: Publish release to GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import os, pathlib, subprocess
+          tag = pathlib.Path('release-tag').read_text('ascii')
+          repo = os.environ['GITHUB_REPOSITORY']
+          if subprocess.run(['gh', 'release', 'view', tag, '--repo', repo], capture_output=True).returncode == 0:
+              raise RuntimeError('Release already exists; no assets were overwritten')
+          subprocess.run(['gh', 'release', 'create', tag,
+                          *[str(p) for p in sorted(pathlib.Path('dist').iterdir())],
+                          '--repo', repo, '--target', os.environ['GITHUB_SHA'],
+                          '--title', 'Station Studio ' + tag[1:],
+                          '--notes-file', 'release-notes.md', '--latest'], check=True)
