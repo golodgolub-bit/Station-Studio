@@ -229,6 +229,7 @@ func main() {
 	flag.StringVar(&base, "base", "/data/local/tmp/station-panel", "data directory")
 	listen := flag.String("listen", ":8787", "listen address")
 	flag.Parse()
+	initAndroidDNS()
 	os.MkdirAll(base, 0750)
 	token = read(filepath.Join(base, "access.key"))
 	if len(token) < 32 {
