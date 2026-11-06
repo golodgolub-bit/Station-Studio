@@ -63,6 +63,7 @@ type PluginManifest struct {
 	Files       map[string]string        `yaml:"files_sha256" json:"files"`
 }
 type PluginRecord struct {
+	Panel      *pluginPanel   `json:"panel,omitempty"`
 	ID         string         `json:"id"`
 	Filename   string         `json:"filename"`
 	Size       int64          `json:"size"`
@@ -156,6 +157,18 @@ func inspectPlugin(reader io.Reader) (PluginRecord, error) {
 		if hashes[p] != h {
 			return record, fmt.Errorf("Не совпадает SHA-256: %s", p)
 		}
+		if strings.HasPrefix(p, "share/") && !strings.HasPrefix(m.Name, "yam/") {
+			prefix := strings.Split(m.Name, "/")[0] + "."
+			scoped := false
+			for _, part := range strings.Split(strings.TrimPrefix(p, "share/"), "/") {
+				if strings.HasPrefix(part, prefix) {
+					scoped = true
+				}
+			}
+			if !scoped {
+				return record, fmt.Errorf("Путь %s должен содержать пространство имён %s; например share/%s/", p, prefix, strings.ReplaceAll(m.Name, "/", "."))
+			}
+		}
 	}
 	if m.Arch != "aarch64" || (m.Target != "any" && m.Target != "yandexstation_2") {
 		record.Compatible = false
@@ -229,6 +242,14 @@ func plugins(w http.ResponseWriter, r *http.Request) {
 		if !found {
 			if m, err := loadInstalledManifest(name); err == nil {
 				rows = append(rows, PluginRecord{Manifest: m, Compatible: true, Notes: []string{"Пакет установлен. Загруженный архив удалён."}})
+			}
+		}
+	}
+	for i := range rows {
+		rows[i].Panel = nil
+		if installed[rows[i].Manifest.Name] == rows[i].Manifest.Version {
+			if p, e := readPluginPanel(rows[i].Manifest); e == nil {
+				rows[i].Panel = &p
 			}
 		}
 	}
@@ -309,11 +330,12 @@ func pluginAction(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 2048)
 	var q struct {
-		Action  string `json:"action"`
-		ID      string `json:"id"`
-		Name    string `json:"name"`
-		Service string `json:"service"`
-		Replace bool   `json:"replace"`
+		Action    string `json:"action"`
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		Service   string `json:"service"`
+		Replace   bool   `json:"replace"`
+		TrustRoot bool   `json:"trustRoot"`
 	}
 	if json.NewDecoder(r.Body).Decode(&q) != nil {
 		fail(w, "Некорректный запрос", 400)
@@ -341,6 +363,10 @@ func pluginAction(w http.ResponseWriter, r *http.Request) {
 			fail(w, "Пакет не прошёл проверку совместимости", 400)
 			return
 		}
+		if (len(record.Manifest.Services) > 0 || len(record.Manifest.Postinstall) > 0) && !q.TrustRoot {
+			fail(w, "Для установки исполняемого плагина подтвердите полный root-доступ", 403)
+			return
+		}
 		var stat syscall.Statfs_t
 		if syscall.Statfs(base, &stat) != nil || int64(stat.Bavail)*int64(stat.Bsize) < record.Unpacked+(100<<20) {
 			fail(w, "Недостаточно места: после установки нужно оставить 100 МБ", 409)
@@ -355,6 +381,9 @@ func pluginAction(w http.ResponseWriter, r *http.Request) {
 			record.ID = q.ID
 			stopPluginPackage(record.Manifest.Name)
 			saveInstalledManifest(record.Manifest)
+			if q.TrustRoot {
+				e = setPluginTrust(record.Manifest, true)
+			}
 			event("Установлен плагин " + record.Manifest.Name)
 		}
 	case "remove":
@@ -366,6 +395,7 @@ func pluginAction(w http.ResponseWriter, r *http.Request) {
 		output, e = yamCall("remove", q.Name)
 		if e == nil {
 			os.Remove(installedManifestPath(q.Name))
+			os.Remove(pluginTrustPath(q.Name))
 			event("Удалён плагин " + q.Name)
 		}
 	case "start", "stop":
@@ -451,6 +481,9 @@ func startPluginService(name, service string, persist bool) error {
 	if e != nil {
 		return e
 	}
+	if !pluginRootAllowed(m) {
+		return fmt.Errorf("Сначала разрешите root-доступ этой версии в карточке плагина")
+	}
 	spec, ok := m.Services[service]
 	if !ok {
 		return fmt.Errorf("Сервис не объявлен в пакете")
@@ -469,7 +502,7 @@ func startPluginService(name, service string, persist bool) error {
 	if hex.EncodeToString(sum[:]) != m.Files[spec.Exec[0]] {
 		return fmt.Errorf("SHA-256 программы не совпал с пакетом")
 	}
-	if m.Files[pluginPanelFile] != "" {
+	if m.Files[pluginPanelPath(m)] != "" {
 		p, err := readPluginPanel(m)
 		if err != nil {
 			return err
@@ -510,7 +543,7 @@ func startPluginService(name, service string, persist bool) error {
 			for k, v := range spec.Env {
 				env[k] = expand(v)
 			}
-			if m.Files[pluginPanelFile] != "" {
+			if m.Files[pluginPanelPath(m)] != "" {
 				env["STATION_STUDIO_SETTINGS"] = pluginSettingsPath(name)
 			}
 			for i, argument := range spec.Exec[1:] {

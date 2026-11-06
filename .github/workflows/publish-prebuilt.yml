@@ -31,7 +31,8 @@ jobs:
               raise RuntimeError('Invalid release version')
           expected = {'Station-Studio-'+version+'.apk', 'Station-Studio-TV-'+version+'.apk',
                       'Station-Studio-Max-0921.zip', 'Station-Studio-Source.zip',
-                      'INSTALL-RU.md', 'SHA256SUMS.txt', 'channel.json'}
+                      'INSTALL-RU.md', 'SHA256SUMS.txt', 'channel.json',
+                      'Station-Studio-PC-'+version+'.exe', 'Station-Studio-Creator-SDK.zip'}
           if set(manifest['assets']) != expected:
               raise RuntimeError('Unexpected release contents')
           origin = manifest['source'].rstrip('/')

@@ -12,11 +12,20 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 // A hashed data file, not executable HTML, describes controls on both editions.
 // Keeping it in share/ preserves compatibility with the existing YAM manifest.
 const pluginPanelFile = "share/station-studio.json"
+
+func pluginPanelPath(m PluginManifest) string {
+	scoped := "share/" + strings.ReplaceAll(m.Name, "/", ".") + "/station-studio.json"
+	if m.Files[scoped] != "" {
+		return scoped
+	}
+	return pluginPanelFile
+}
 
 type pluginField struct {
 	ID      string   `json:"id"`
@@ -32,6 +41,8 @@ type pluginField struct {
 type pluginPanel struct {
 	Version int           `json:"version"`
 	Title   string        `json:"title"`
+	Emoji   string        `json:"emoji,omitempty"`
+	UI      string        `json:"ui,omitempty"`
 	Fields  []pluginField `json:"fields"`
 }
 
@@ -78,7 +89,7 @@ func decodePluginPanel(raw []byte) (pluginPanel, error) {
 	var p pluginPanel
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
-	if len(raw) > 32768 || dec.Decode(&p) != nil || p.Version != 1 || p.Title == "" || len(p.Title) > 120 || len(p.Fields) > 24 {
+	if len(raw) > 32768 || dec.Decode(&p) != nil || p.Version != 1 || p.Title == "" || len(p.Title) > 120 || len(p.Fields) > 24 || len(p.Emoji) > 32 || (p.UI != "" && p.UI != "station-ui.html") {
 		return p, fmt.Errorf("Некорректное описание настроек плагина")
 	}
 	var tail any
@@ -110,10 +121,11 @@ func decodePluginPanel(raw []byte) (pluginPanel, error) {
 }
 func readPluginPanel(m PluginManifest) (pluginPanel, error) {
 	var p pluginPanel
-	if !pluginName.MatchString(m.Name) || !pluginVersion.MatchString(m.Version) || m.Files[pluginPanelFile] == "" {
+	panelPath := pluginPanelPath(m)
+	if !pluginName.MatchString(m.Name) || !pluginVersion.MatchString(m.Version) || m.Files[panelPath] == "" {
 		return p, fmt.Errorf("Автор не добавил настройки для панели")
 	}
-	path := filepath.Join(yamRoot, "pkgs", m.Name, m.Version, pluginPanelFile)
+	path := filepath.Join(yamRoot, "pkgs", m.Name, m.Version, panelPath)
 	resolved, e := filepath.EvalSymlinks(path)
 	if e != nil || resolved != path {
 		return p, fmt.Errorf("Описание настроек недоступно")
@@ -128,7 +140,7 @@ func readPluginPanel(m PluginManifest) (pluginPanel, error) {
 		return p, e
 	}
 	sum := sha256.Sum256(raw)
-	if hex.EncodeToString(sum[:]) != m.Files[pluginPanelFile] {
+	if hex.EncodeToString(sum[:]) != m.Files[panelPath] {
 		return p, fmt.Errorf("Описание настроек изменено после установки")
 	}
 	return decodePluginPanel(raw)

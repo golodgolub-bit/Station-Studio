@@ -17,7 +17,7 @@ func panelHeaders(next http.Handler) http.Handler {
 			ancestor = "'self'"
 			w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 		}
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob: data:; connect-src 'self'; object-src 'none'; frame-ancestors "+ancestor+"; base-uri 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob: data:; connect-src 'self'; frame-src 'self' about:; object-src 'none'; frame-ancestors "+ancestor+"; base-uri 'none'")
 		next.ServeHTTP(w, r)
 	})
 }
