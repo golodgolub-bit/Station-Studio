@@ -12,18 +12,45 @@ import (
 )
 
 type hdmiBadge struct {
-	Enabled bool   `json:"enabled"`
-	Media   string `json:"media"`
-	Size    int    `json:"size"`
-	X       int    `json:"x"`
-	Y       int    `json:"y"`
-	Shape   string `json:"shape"`
-	Backing bool   `json:"backing"`
+	ConsentVersion int    `json:"consentVersion"`
+	Enabled        bool   `json:"enabled"`
+	Media          string `json:"media"`
+	Size           int    `json:"size"`
+	X              int    `json:"x"`
+	Y              int    `json:"y"`
+	Shape          string `json:"shape"`
+	Backing        bool   `json:"backing"`
+}
+
+func effectiveBadge(raw []byte, mediaExists bool) hdmiBadge {
+	saved := hdmiBadge{Size: 64, X: 24, Y: 24, Shape: "circle", Backing: true}
+	_ = json.Unmarshal(raw, &saved)
+	if saved.Size < 32 || saved.Size > 160 {
+		saved.Size = 64
+	}
+	if saved.X < 0 || saved.X > 300 {
+		saved.X = 24
+	}
+	if saved.Y < 0 || saved.Y > 200 {
+		saved.Y = 24
+	}
+	if saved.Shape != "circle" && saved.Shape != "rounded" && saved.Shape != "square" {
+		saved.Shape = "circle"
+	}
+	saved.Media = ""
+	if mediaExists {
+		saved.Media = "badge.media"
+	}
+	if saved.ConsentVersion != 1 || !mediaExists {
+		saved.Enabled = false
+	}
+	return saved
 }
 
 func badgeAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
-		response(w, json.RawMessage(validJSONFile(filepath.Join(avatarFolder, "badge.json"))))
+		saved := effectiveBadge(validJSONFile(filepath.Join(avatarFolder, "badge.json")), fileExists(avatarFolder+"/badge.media"))
+		response(w, saved)
 		return
 	}
 	if r.Method != "POST" {
@@ -38,6 +65,10 @@ func badgeAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	if q.Enabled && !fileExists(avatarFolder+"/badge.media") {
 		fail(w, "Сначала загрузите PNG, JPEG или GIF", 409)
+		return
+	}
+	if q.Enabled && q.ConsentVersion != 1 {
+		fail(w, "Дополнительное изображение HDMI включается только отдельным подтверждением. Оно не заменяет штатный значок.", 409)
 		return
 	}
 	q.Media = "badge.media"

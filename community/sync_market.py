@@ -8,7 +8,7 @@ import datetime, hashlib, json, os, pathlib, re, subprocess, sys, tempfile, urll
 ORIGIN='https://station-studio-community.shaaaape.chatgpt.site'
 UUID=re.compile(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')
 SHA=re.compile(r'^[a-f0-9]{64}$')
-UA='StationStudio/2.4 (+https://github.com/golodgolub-bit/Station-Studio)'
+UA='AliceKit/2.5 (+https://github.com/golodgolub-bit/Station-Studio)'
 
 class OnlySource(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, url):

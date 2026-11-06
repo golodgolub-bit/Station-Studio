@@ -34,7 +34,7 @@ import (
 //go:embed assets/*
 var assets embed.FS
 
-const version = "2.4.0"
+const version = "2.5.0"
 const channel = "https://github.com/golodgolub-bit/Station-Studio/releases/latest/download/channel.json"
 const fakeKey = "000000000000000000000000000000000000000000000000"
 
@@ -316,6 +316,17 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		jsonOut(w, map[string]bool{"ok": true})
 		return
+	case "/desktop/publish":
+		if r.Method != "POST" {
+			http.Error(w, "POST", 405)
+			return
+		}
+		if e := publisherWindow(); e != nil {
+			errOut(w, e, 500)
+			return
+		}
+		jsonOut(w, map[string]bool{"ok": true})
+		return
 	case "/desktop/update":
 		a.update(w, r)
 		return
@@ -324,7 +335,7 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	case "/desktop/session.js":
 		w.Header().Set("Content-Type", "application/javascript")
-		io.WriteString(w, `addEventListener('DOMContentLoaded',()=>{if(window.stationNativeConnect)window.stationNativeConnect('`+fakeKey+`');const p=document.querySelector('.aside-bottom');if(p){const a=document.createElement('a');a.href='/desktop/';a.textContent='Подключение и обновления ПК';a.style.cssText='font-size:11px;line-height:1.6;color:#6d7c64;text-decoration:none;margin-top:12px';p.append(a)}});setInterval(()=>fetch('/desktop/alive').catch(()=>{}),15000);`)
+		io.WriteString(w, `window.StationDesktop={publish:async()=>{const r=await fetch('/desktop/publish',{method:'POST'});if(!r.ok)throw Error('Не удалось открыть мастерскую');}};addEventListener('DOMContentLoaded',()=>{if(window.stationNativeConnect)window.stationNativeConnect('`+fakeKey+`');const p=document.querySelector('.aside-bottom');if(p){const a=document.createElement('a');a.href='/desktop/';a.textContent='Подключение и обновления ПК';a.style.cssText='font-size:11px;line-height:1.6;color:#6d7c64;text-decoration:none;margin-top:12px';p.append(a)}});setInterval(()=>fetch('/desktop/alive').catch(()=>{}),15000);`)
 		return
 	}
 	cfg := a.snapshot()
@@ -590,4 +601,18 @@ func launchVerifiedUpdate(dir string) bool {
 		return false
 	}
 	return exec.Command(path).Start() == nil
+}
+
+// The author window has its own remote origin and receives no station credentials.
+func publisherWindow() error {
+	const address = "https://station-studio-community.shaaaape.chatgpt.site/app"
+	for _, root := range []string{os.Getenv("ProgramFiles(x86)"), os.Getenv("ProgramFiles"), os.Getenv("LOCALAPPDATA")} {
+		p := filepath.Join(root, "Microsoft", "Edge", "Application", "msedge.exe")
+		if _, e := os.Stat(p); e == nil {
+			cmd := exec.Command(p, "--app="+address, "--window-size=620,860")
+			cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+			return cmd.Start()
+		}
+	}
+	return fmt.Errorf("Для встроенной мастерской требуется Microsoft Edge. Можно опубликовать плагин из приложения телефона")
 }

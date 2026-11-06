@@ -1,11 +1,14 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.station.controller" android:versionCode="17" android:versionName="2.4.0">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.station.controller" android:versionCode="18" android:versionName="2.5.0">
  <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="35"/>
  <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
  <uses-feature android:name="android.software.leanback" android:required="false"/>
  <uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
- <application android:icon="@drawable/studio_icon" android:banner="@drawable/studio_banner" android:label="Station Studio" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:usesCleartextTraffic="false" android:allowBackup="false" android:hardwareAccelerated="true">
+ <application android:icon="@drawable/studio_icon" android:banner="@drawable/studio_banner" android:label="AliceKit" android:theme="@style/AliceKitTheme" android:usesCleartextTraffic="false" android:allowBackup="false" android:hardwareAccelerated="true">
  <activity android:name=".ControllerActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden"/>
  <activity-alias android:name=".MainActivity" android:targetActivity=".ControllerActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/><category android:name="android.intent.category.LEANBACK_LAUNCHER"/></intent-filter></activity-alias>
+ <activity android:name=".CommunityActivity" android:exported="false"/>
+ <activity android:name=".BootstrapActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden"/>
+ <activity android:name=".YandexHomeActivity" android:exported="true" android:launchMode="singleTask" android:configChanges="orientation|screenSize|keyboardHidden"><intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="alicekit" android:host="oauth" android:path="/yandex"/></intent-filter></activity>
  <provider android:name=".UpdateProvider" android:authorities="local.station.controller.updates" android:exported="false" android:grantUriPermissions="true"/>
  </application></manifest>

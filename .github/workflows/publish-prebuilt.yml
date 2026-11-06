@@ -64,5 +64,5 @@ jobs:
           subprocess.run(['gh', 'release', 'create', tag,
                           *[str(p) for p in sorted(pathlib.Path('dist').iterdir())],
                           '--repo', repo, '--target', os.environ['GITHUB_SHA'],
-                          '--title', 'Station Studio ' + tag[1:],
+                          '--title', 'AliceKit ' + tag[1:],
                           '--notes-file', 'release-notes.md', '--latest'], check=True)

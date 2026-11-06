@@ -396,6 +396,7 @@ func pluginAction(w http.ResponseWriter, r *http.Request) {
 		if e == nil {
 			os.Remove(installedManifestPath(q.Name))
 			os.Remove(pluginTrustPath(q.Name))
+			os.Remove(pluginHomePath(q.Name))
 			event("Удалён плагин " + q.Name)
 		}
 	case "start", "stop":

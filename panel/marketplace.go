@@ -120,7 +120,7 @@ func marketplaceAPI(w http.ResponseWriter, r *http.Request) {
 		if end < len(items) {
 			next = page + 1
 		}
-		response(w, map[string]any{"items": items[start:end], "next": next, "syncedAt": index.SyncedAt, "intervalMinutes": 15, "total": len(items), "publishURL": communityOrigin})
+		response(w, map[string]any{"items": items[start:end], "next": next, "syncedAt": index.SyncedAt, "intervalMinutes": 15, "total": len(items), "publishURL": communityOrigin + "/app"})
 		return
 	}
 
