@@ -16,3 +16,10 @@ Use case: product-mockup / standalone UI launch animation asset. The attached im
 ## Prompt: acoustic fabric
 
 Use case: photorealistic material texture for a real-time3Dproduct replica, not an illustration. The reference is an actual Yandex Station Max photograph; use ONLY the charcoal acoustic fabric around the outside rim as the material reference. Produce one seamless tileable square albedo/base-color map of that tightly woven dark charcoal acoustic speaker fabric. Orthographic macro photograph, perfectly even diffuse illumination, realistic interlaced heather charcoal-black yarn fibers, dense fine three-dimensional woven detail, consistent physical scale across the entire tile. Dark but with visible fibers and natural microvariation, neutral charcoal RGB roughly45-75, no purple tint. No device, no controls, no ring, no typography, no logo, no perspective, no gradients, no vignette, no borders, no shadow direction. Edges must repeat seamlessly horizontally and vertically. This asset is a production material for a faithful station product visualization, not a design mockup. Opaque image.
+
+
+## TV banner 2.7
+
+Separate 16:9 launcher artwork, generated with the built-in imagegen using the approved purple emblem as reference. Final assets: panel/web/tv-banner.jpg and panel/{controller,voice}/res/drawable-nodpi/alicekit_tv_banner.jpg. Phone launcher retains its square emblem. Resizing to 960×540 preserves the full generated composition.
+
+Prompt: Create a finished Android TV launcher banner for AliceKit, exactly wide 16:9 landscape composition. Preserve the reference glossy white open ring surrounding house roof, violet inner glow, pearlescent ceramic material, and lavender brand identity. Emblem as a physical sculptural object on the left, no rounded-square tile. On the right wordmark exactly AliceKit with small TV underneath. Spacious safe margins, central 80% area. Pale lavender photographic studio backdrop, restrained violet caustic lighting, matte floor, soft realistic shadows. No other text, no symbols, no station image, no UI mockup or border. Entire image is banner artwork.

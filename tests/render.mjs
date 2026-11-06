@@ -2,7 +2,7 @@ import {chromium} from 'playwright-core';
 import fs from 'node:fs';
 const browser=await chromium.launch({channel:'chrome',headless:true});
 let failed=false;
-try{for(const [screen,width,height]of [['tv-visual',1280,720],['tv-ring',1920,1080],['tv-switch',960,540],['phone-home',390,844],['phone-ring',360,740],['phone-music',430,932],['phone-visual',390,844]]){
+try{for(const [screen,width,height]of [['tv-visual',1280,720],['tv-ring',1920,1080],['tv-switch',960,540],['phone-home',390,844],['phone-ring',360,740],['phone-music',430,932],['phone-visual',390,844],['phone-small',320,568],['tablet-home',768,1024],['pc-home',1440,960]]){
  const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('http://127.0.0.1:18890/'+(screen.startsWith('tv')?'tv.html':'index.html')+'?screen='+screen);
  try{await page.waitForFunction(()=>document.documentElement.dataset.qaDone==='true',{timeout:20000})}catch(e){errors.push(e.message)}

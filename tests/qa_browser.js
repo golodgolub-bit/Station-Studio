@@ -9,6 +9,7 @@
   const groups=document.querySelectorAll('.home-device-group');check(groups.length===1,'Группа дома показана одной карточкой');
   check(![...document.querySelectorAll('.home-devices .home-device b')].some(e=>e.textContent==='Торшер'),'Дочерние устройства не дублируются');
   if(screen.startsWith('tv')){
+   const buttons=[...document.querySelectorAll('.now-playing-stage .transport')],rects=buttons.map(b=>b.getBoundingClientRect());check(rects.length===3&&rects.every(r=>Math.abs(r.top-rects[0].top)<2),'Плеер ТВ: три кнопки на одной строке');
    document.querySelector('nav [data-section=appearance]').click();await until(()=>[...document.querySelectorAll('#view .tile h3')].some(e=>e.textContent==='Кольцо'));
    [...document.querySelectorAll('#view .tile h3')].find(e=>e.textContent==='Кольцо').closest('button').click();await until(()=>document.querySelector('.ring-dialog')?.open);
    const sync=[...document.querySelectorAll('#dialog button')].find(e=>e.textContent==='Синхронизировать с музыкой');check(!!sync,'В кольце есть явная кнопка синхронизации');sync.focus();stationTvActivate();await until(()=>document.querySelector('.visual-dialog')?.open);await wait(500);

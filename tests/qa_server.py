@@ -5,7 +5,7 @@ import json,base64,time
 ROOT=Path(__file__).resolve().parents[1]/'panel/web'
 OUT=ROOT.parents[1]/'artifacts'
 OUT.mkdir(exist_ok=True)
-state={'active':False,'state':'off','config':{},'error':'','level':.12,'coverAvailable':True}
+state={'active':False,'state':'off','config':{'mode':'','source':'','target':'','gain':0,'brightness':0,'duration':0,'colorSource':''},'error':'','level':.12,'coverAvailable':True}
 def device(i,name):return {'id':i,'name':name,'type':'devices.types.light','state':'online','room':'room1','groups':['group1'],'capabilities':[{'type':'devices.capabilities.on_off','state':{'instance':'on','value':True}},{'type':'devices.capabilities.color_setting','parameters':{'color_model':'hsv'},'state':{'instance':'hsv','value':{'h':270,'s':50,'v':70}}}]}
 home={'connected':True,'rooms':[{'id':'room1','name':'Гостиная'}],'devices':[device('l1','Свет у дивана'),device('l2','Торшер')],'groups':[{'id':'group1','name':'Вечерний свет','devices':['l1','l2']}]}
 class Handler(SimpleHTTPRequestHandler):
@@ -17,6 +17,7 @@ class Handler(SimpleHTTPRequestHandler):
   raw=self.rfile.read(int(self.headers.get('Content-Length','0')));q=json.loads(raw or b'{}')
   if self.path.startswith('/qa/report'):
    name=parse_qs(urlparse(self.path).query).get('screen',['result'])[0];assert name.replace('-','').isalnum();(OUT/('qa27-'+name+'.json')).write_text(json.dumps(q,ensure_ascii=False,indent=2),encoding='utf-8');self.send({'ok':True});return
+  if self.path=='/api/music/visual' and q.get('action')=='start' and (q.get('source') not in ['selected','room','system'] or q.get('mode') not in ['spectrum','wave','pulse','vu','mirror','orbit','ribbon','spark','tunnel'] or not .25<=q.get('gain',0)<=20 or q.get('target') not in ['ring','matrix','both']):self.send({'error':'Некорректные настройки визуализации'},400);return
   if self.path=='/api/music/visual':state.update(active=q.get('action')=='start',state='running' if q.get('action')=='start' else 'off',config=q,error='')
   self.send({'ok':True})
  def do_GET(self):
