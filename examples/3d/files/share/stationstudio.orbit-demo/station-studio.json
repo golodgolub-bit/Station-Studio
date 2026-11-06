@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "title": "Orbit · 3D-мастерская",
+  "emoji": "🪐",
+  "ui": "station-ui.html",
+  "uiMode": "scene",
+  "uiTV": true,
+  "fields": [
+    {
+      "id": "motion",
+      "label": "Движение сцены",
+      "type": "toggle",
+      "default": true
+    },
+    {
+      "id": "speed",
+      "label": "Скорость",
+      "type": "range",
+      "default": 30,
+      "min": 0,
+      "max": 100,
+      "step": 5
+    }
+  ]
+}

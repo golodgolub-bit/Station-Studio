@@ -30,7 +30,7 @@ window.StationHome={async mount(root,options={}){
  async function load(){const ticket=++revision;try{const j=await api('home');if(ticket!==revision||!root.isConnected)return;snapshot=j;render(j)}catch(e){if(ticket!==revision||!root.isConnected)return;root.replaceChildren(n('h3','Мой дом'),n('p',e.message,'muted'),button('Повторить',load),button('Настройки подключения',connect))}}
  await load();return{refresh:load}
 }};
-const splash=document.getElementById('konturSplash');let connected=false;
-const ready=()=>{if(splash)splash.classList.add('ready')};setTimeout(ready,1500);document.addEventListener('visibilitychange',()=>{if(!document.hidden)ready()});
+let connected=false;
+
 const mount=document.getElementById('smartHomeMount');if(mount){const observer=new MutationObserver(()=>{if(!connected&&document.getElementById('app')?.hidden===false){connected=true;StationHome.mount(mount).catch(()=>{})}});observer.observe(document.getElementById('app'),{attributes:true,attributeFilter:['hidden']});if(!document.getElementById('app')?.hidden){connected=true;StationHome.mount(mount).catch(()=>{})}}
 })();

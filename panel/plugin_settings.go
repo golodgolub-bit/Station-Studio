@@ -43,6 +43,8 @@ type pluginPanel struct {
 	Title   string        `json:"title"`
 	Emoji   string        `json:"emoji,omitempty"`
 	UI      string        `json:"ui,omitempty"`
+	UIMode  string        `json:"uiMode,omitempty"`
+	UITV    bool          `json:"uiTV,omitempty"`
 	Fields  []pluginField `json:"fields"`
 }
 
@@ -93,6 +95,9 @@ func decodePluginPanel(raw []byte) (pluginPanel, error) {
 		return p, fmt.Errorf("Некорректное описание настроек плагина")
 	}
 	var tail any
+	if (p.UIMode != "" && p.UIMode != "panel" && p.UIMode != "scene") || ((p.UITV || p.UIMode != "") && p.UI == "") {
+		return p, fmt.Errorf("Проверьте режим интерфейса плагина")
+	}
 	if dec.Decode(&tail) != io.EOF {
 		return p, fmt.Errorf("Лишние данные в описании настроек")
 	}
@@ -119,13 +124,14 @@ func decodePluginPanel(raw []byte) (pluginPanel, error) {
 	}
 	return p, nil
 }
-func readPluginPanel(m PluginManifest) (pluginPanel, error) {
+func readPluginPanel(m PluginManifest) (pluginPanel, error) { return readPluginPanelAt(yamRoot, m) }
+func readPluginPanelAt(root string, m PluginManifest) (pluginPanel, error) {
 	var p pluginPanel
 	panelPath := pluginPanelPath(m)
 	if !pluginName.MatchString(m.Name) || !pluginVersion.MatchString(m.Version) || m.Files[panelPath] == "" {
 		return p, fmt.Errorf("Автор не добавил настройки для панели")
 	}
-	path := filepath.Join(yamRoot, "pkgs", m.Name, m.Version, panelPath)
+	path := filepath.Join(root, "pkgs", m.Name, m.Version, panelPath)
 	resolved, e := filepath.EvalSymlinks(path)
 	if e != nil || resolved != path {
 		return p, fmt.Errorf("Описание настроек недоступно")

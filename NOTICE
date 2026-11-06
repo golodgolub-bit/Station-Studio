@@ -32,3 +32,9 @@ are used. Cookie persistence, consent and device adapter are implemented in Go.
 
 QR images are generated locally with skip2/go-qrcode, MIT,
 Copyright (c) 2014 Tom Harwood. See third-party/go-qrcode/LICENSE.
+
+Manrope variable font is licensed under SIL Open Font License1.1; see third-party/manrope/OFL.txt. It is bundled locally; the application does not call Google Fonts at runtime.
+
+The Station Max YNDX-0008 top-view photograph (panel/web/station-max-top.jpg) is used to identify the real hardware. It is not covered by this project's MIT license. Source: https://kotofoto.ru/product_img/3298/492227/492227_umnaya_kolonka_yandeks_stantsiya_maks_chernaya_yndx_0008_2m.jpg . Rights in product imagery, design and marks remain with the respective owners. The application adds a separate live light overlay without altering the hardware photograph.
+
+The launch-star.png bitmap was created for AliceKit with OpenAI imagegen. The existing purple emblem is retained. Product photography is not generated.

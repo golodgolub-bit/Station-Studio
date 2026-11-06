@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "title": "Мастерская · пример",
+  "emoji": "🪐",
+  "ui": "station-ui.html",
+  "fields": [
+    {
+      "id": "caption",
+      "label": "Ваша подпись",
+      "type": "text",
+      "default": "Привет, станция"
+    },
+    {
+      "id": "level",
+      "label": "Насыщенность превью",
+      "type": "range",
+      "default": 50,
+      "min": 0,
+      "max": 100,
+      "step": 5
+    }
+  ]
+}

@@ -34,7 +34,7 @@ import (
 //go:embed assets/*
 var assets embed.FS
 
-const version = "2.5.1"
+const version = "2.6.0"
 const channel = "https://github.com/golodgolub-bit/Station-Studio/releases/latest/download/channel.json"
 const fakeKey = "000000000000000000000000000000000000000000000000"
 
@@ -286,6 +286,14 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html;charset=utf-8")
 		w.Write(b)
 		return
+	case "/desktop/manrope.ttf":
+		b, _ := assets.ReadFile("assets/manrope.ttf")
+		w.Header().Set("Content-Type", "font/ttf")
+		w.Write(b)
+	case "/desktop/kontur.png":
+		b, _ := assets.ReadFile("assets/kontur.png")
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(b)
 	case "/desktop/station.png":
 		b, _ := assets.ReadFile("assets/station.png")
 		w.Header().Set("Content-Type", "image/png")

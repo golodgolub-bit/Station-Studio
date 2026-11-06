@@ -61,5 +61,5 @@ func pluginUIAPI(w http.ResponseWriter, r *http.Request) {
 		fail(w, e.Error(), 409)
 		return
 	}
-	response(w, map[string]any{"html": html, "bridge": []string{"settings.read", "settings.write", "home.read", "home.control"}, "isolated": true})
+	response(w, map[string]any{"html": html, "bridge": []string{"settings.read", "settings.write", "home.read", "home.control", "assets.read", "runtime.info"}, "isolated": true})
 }

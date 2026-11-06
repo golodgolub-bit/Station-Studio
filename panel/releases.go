@@ -163,8 +163,14 @@ func installTVWorker(m releaseManifest) {
 	}()
 	if !installedTVHashMatches(m.SHA) {
 		var space syscall.Statfs_t
-		if e := syscall.Statfs(base, &space); e != nil || space.Bfree*uint64(space.Bsize) < apkInstallReserve(space, uint64(m.Size)) {
-			failure = fmt.Errorf("Недостаточно свободной памяти с учётом резерва Android. Освободите около 260 МБ и повторите проверку")
+		if e := syscall.Statfs(base, &space); e != nil {
+			failure = fmt.Errorf("Не удалось проверить свободное место")
+			return
+		}
+		required := apkInstallReserve(space, uint64(m.Size))
+		available := space.Bfree * uint64(space.Bsize)
+		if available < required {
+			failure = fmt.Errorf("Недостаточно памяти с учётом резерва Android. Освободите ещё %d МБ и повторите проверку", (required-available+(1<<20)-1)/(1<<20))
 			return
 		}
 		set("Установка на станцию")

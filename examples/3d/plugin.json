@@ -1,0 +1,9 @@
+{
+  "name": "stationstudio/orbit-demo",
+  "version": "1.0.4",
+  "license": "MIT",
+  "description": "Учебное 3D-пространство: WebGL1, ресурсы через мост, сенсор и пульт. Без root-служб и управления устройствами.",
+  "target": "yandexstation_2",
+  "arch": "aarch64",
+  "permissions": []
+}

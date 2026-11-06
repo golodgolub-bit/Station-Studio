@@ -1,0 +1,4 @@
+#!/system/bin/sh
+printf "Creator SDK works. Settings: "
+cat "$STATION_STUDIO_SETTINGS"
+printf "\n"

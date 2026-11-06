@@ -19,6 +19,9 @@ if args.android:
  for folder,name in [('controller','Station-Studio.apk'),('voice','Station-Studio-TV.apk')]:
   src=ROOT/'panel'/folder;build=out/('build-'+folder);build.mkdir(exist_ok=True)
   assets=build/'assets';assets.mkdir(exist_ok=True)
+  if folder=='controller':
+   shutil.copyfile(ROOT/'panel/web/manrope.ttf',assets/'manrope.ttf')
+   shutil.copytree(ROOT/'third-party/manrope',assets/'third-party/manrope',dirs_exist_ok=True)
   deps=[]
   if folder=='voice':
    run([sys.executable,ROOT/'fetch_android_media_deps.py'])
