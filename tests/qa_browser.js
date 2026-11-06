@@ -23,7 +23,7 @@
     stationTvBack();const dialog=document.getElementById('dialog');document.getElementById('dialogBody').innerHTML='<h2>Проверка переключателя</h2><label class="check"><span>Синхронизация с музыкой</span><input type="checkbox"></label>';dialog.showModal();await until(()=>dialog.querySelector('.tv-switch'));const b=dialog.querySelector('.tv-switch'),input=dialog.querySelector('input');let changes=0;input.addEventListener('change',()=>changes++);b.focus();stationTvActivate();check(input.checked&&changes===1&&b.getAttribute('aria-checked')==='true','OK меняет переключатель ровно один раз')
    }
   }else if(screen==='phone-ring'){showTab('light');studioPane('ring');await wait(700)}else if(screen==='phone-music'){showTab('music');await wait(500)}else if(screen==='phone-visual'){showTab('light');studioPane('music');await wait(500)}
-  await wait(800);
+  await until(()=>!document.getElementById("konturSplash")||getComputedStyle(document.getElementById("konturSplash")).visibility==="hidden");await document.fonts.ready;await wait(300);
  }catch(e){report.errors.push(e.message)}
  const result=document.createElement('pre');result.id='qaResult';result.hidden=true;result.textContent=JSON.stringify(report);document.body.append(result);await fetch('/qa/report?screen='+screen,{method:'POST',body:JSON.stringify(report)});document.documentElement.dataset.qaDone='true';
 })();

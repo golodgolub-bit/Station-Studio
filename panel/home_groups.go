@@ -2,6 +2,10 @@ package main
 
 import "encoding/json"
 
+type homeReferences []string
+
+func (r *homeReferences) UnmarshalJSON(raw []byte) error { *r = homeMemberIDs(raw); return nil }
+
 // Quasar returns references as either IDs or {id:...}; never copy whole
 // nested device objects into groups or expose unrelated account metadata.
 func homeMemberIDs(raw json.RawMessage) []string {

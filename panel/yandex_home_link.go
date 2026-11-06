@@ -293,7 +293,18 @@ func homeWebInfo(c *http.Client) (homeInfo, error) {
 				if seenRooms[room.ID] {
 					continue
 				}
-				metadata, _ := json.Marshal(map[string]string{"id": room.ID, "name": room.Name})
+				roomMeta := map[string]any{"id": room.ID, "name": room.Name}
+				var decoration map[string]json.RawMessage
+				_ = json.Unmarshal(r, &decoration)
+				for _, key := range []string{"image", "background", "icon", "image_url", "background_url", "icon_url"} {
+					if raw, ok := decoration[key]; ok {
+						var value any
+						if json.Unmarshal(raw, &value) == nil {
+							roomMeta[key] = value
+						}
+					}
+				}
+				metadata, _ := json.Marshal(roomMeta)
 				info.Rooms = append(info.Rooms, metadata)
 				seenRooms[room.ID] = true
 			}
@@ -303,6 +314,19 @@ func homeWebInfo(c *http.Client) (homeInfo, error) {
 				members := homeMemberIDs(item.Devices)
 				if len(members) == 0 {
 					members = homeMemberIDs(item.Items)
+				}
+				if len(members) == 0 {
+					for _, device := range house.All {
+						for _, group := range device.Groups {
+							if device.ItemType == "device" && group == item.ID && homeID.MatchString(device.ID) {
+								members = append(members, device.ID)
+								break
+							}
+						}
+					}
+				}
+				if len(members) == 0 {
+					continue
 				}
 				g, _ := json.Marshal(map[string]any{"id": item.ID, "name": item.Name, "type": item.Type, "room": roomOfDevice[item.ID], "devices": members, "capabilities": item.Capabilities})
 				info.Groups = append(info.Groups, g)

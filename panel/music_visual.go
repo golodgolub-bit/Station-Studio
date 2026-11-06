@@ -223,7 +223,7 @@ func (t *musicTap) sample() (musicLight, error) {
 func musicSnapshot() musicLight { musicMu.Lock(); defer musicMu.Unlock(); return musicLevels }
 func validMusicMode(mode string) bool {
 	switch mode {
-	case "spectrum", "wave", "pulse", "vu", "mirror", "orbit", "ribbon":
+	case "spectrum", "wave", "pulse", "vu", "mirror", "orbit", "ribbon", "spark", "tunnel":
 		return true
 	}
 	return false
@@ -247,6 +247,26 @@ func musicMatrixFrame(s musicLight, mode string) []byte {
 	}
 	level := math.Min(1, s.Level*s.Gain*3)
 	switch mode {
+	case "spark":
+		for k := 0; k < 16; k++ {
+			v := math.Min(1, math.Sqrt(math.Max(0, s.Bands[k]*s.Gain*8)))
+			x, y := (k*17)%25, (k*11)%16
+			put(x, y, byte(v*255))
+			if v > .45 {
+				put(x-1, y, byte(v*90))
+				put(x+1, y, byte(v*90))
+				put(x, y-1, byte(v*90))
+				put(x, y+1, byte(v*90))
+			}
+		}
+	case "tunnel":
+		for y := 0; y < 16; y++ {
+			for x := 0; x < 25; x++ {
+				radius := math.Hypot(float64(x-12)/1.5, float64(y)-7.5)
+				wave := (1 + math.Cos(radius*1.4-s.Phase*3)) / 2
+				put(x, y, byte(math.Min(255, 255*wave*math.Sqrt(level))))
+			}
+		}
 	case "mirror":
 		for x := 0; x < 25; x++ {
 			v := s.Bands[x*16/25] * s.Gain
@@ -508,6 +528,7 @@ func musicVisualAPI(w http.ResponseWriter, r *http.Request) {
 	musicControlMu.Lock()
 	defer musicControlMu.Unlock()
 	if q.Action == "stop" {
+		stopDisplayFeedback()
 		stopMusicVisualLocked()
 		response(w, map[string]bool{"ok": true})
 		return
@@ -558,6 +579,7 @@ func musicVisualAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	stopMusicVisualLocked()
+	stopDisplayFeedback()
 	mu.Lock()
 	previous := cfg
 	if previous.Ring == "music" {

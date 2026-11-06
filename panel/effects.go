@@ -63,7 +63,7 @@ func effects() {
 	origin := time.Now()
 	active := false
 	var envelopes [24]float64
-	autoLevel := .12
+	autoLevel := .01
 	for now := range ticker.C {
 		mu.Lock()
 		c := cfg
@@ -96,7 +96,11 @@ func effects() {
 			motionTime = t
 		}
 		if level.Level > 0 {
-			autoLevel = autoLevel*.985 + level.Level*.015
+			rate := .008
+			if level.Level > autoLevel {
+				rate = .08
+			}
+			autoLevel += rate * (level.Level - autoLevel)
 		}
 		for n := 0; n < 24; n++ {
 			r, g, b := rgb(c.Color)
@@ -156,8 +160,12 @@ func effects() {
 					r, g, b = paletteBlend(c.Palette, pos)
 				}
 				v := 0.0
-				sensitivity := level.Gain / math.Max(.08, autoLevel*4)
+				sensitivity := level.Gain / math.Max(.035, autoLevel*2.5)
 				switch level.Mode {
+				case "spark":
+					v = math.Sqrt(math.Max(0, level.Bands[n*16/24]*sensitivity*4)) * (.35 + .65*math.Pow((1+math.Sin(motionTime*3+float64(n)*2.4))/2, 3))
+				case "tunnel":
+					v = math.Sqrt(math.Max(0, level.Level*sensitivity)) * (.3 + .7*(1+math.Cos(float64(n)*math.Pi/6-motionTime*3))/2)
 				case "mirror":
 					band := int(math.Abs(float64(n)-11.5) * 16 / 12)
 					v = math.Sqrt(math.Max(0, level.Bands[band]*sensitivity*3))

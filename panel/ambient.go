@@ -332,6 +332,7 @@ func ambientAPI(w http.ResponseWriter, r *http.Request) {
 	musicControlMu.Lock()
 	defer musicControlMu.Unlock()
 	if q.Action == "stop" {
+		stopDisplayFeedback()
 		stopAmbientLocked()
 		response(w, map[string]bool{"ok": true})
 		return
@@ -343,6 +344,7 @@ func ambientAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	stopAmbientLocked()
 	stopMusicVisualLocked()
+	stopDisplayFeedback()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	ambientMu.Lock()

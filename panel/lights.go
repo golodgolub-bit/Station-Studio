@@ -333,6 +333,7 @@ func lampWorker(ctx context.Context, done chan struct{}, q lampShow, selected []
 		ready = append(ready, l)
 	}
 	defer func() {
+		cancelAudio()
 		for _, l := range ready {
 			if l.Kind == "yandex" {
 				if changedHome[l.ID] {
@@ -408,6 +409,7 @@ func lampWorker(ctx context.Context, done chan struct{}, q lampShow, selected []
 				}
 				brightness = q.Min + int(math.Min(1, math.Sqrt(level*q.Gain))*float64(q.Max-q.Min))
 			}
+			roundFailed := false
 			for i, l := range ready {
 				if ctx.Err() != nil {
 					return
@@ -430,8 +432,12 @@ func lampWorker(ctx context.Context, done chan struct{}, q lampShow, selected []
 					_, e = yeelightRequest(l, "set_scene", []any{"color", color[0]<<16 | color[1]<<8 | color[2], brightness})
 				}
 				if e != nil {
+					roundFailed = true
 					setError(fmt.Errorf("%s: %v", l.Name, e))
 				}
+			}
+			if !roundFailed {
+				setError(nil)
 			}
 			index++
 		}

@@ -3,12 +3,25 @@ package main
 import (
 	"fmt"
 	"math"
+	"sync"
 	"sync/atomic"
 	"time"
 )
 
 var displayFeedbackUntil atomic.Int64
 var displayFeedbackCancel atomic.Bool
+var displayFeedbackControl sync.Mutex
+var displayFeedbackDone chan struct{}
+
+func stopDisplayFeedback() {
+	displayFeedbackControl.Lock()
+	done := displayFeedbackDone
+	displayFeedbackCancel.Store(true)
+	displayFeedbackControl.Unlock()
+	if done != nil {
+		<-done
+	}
+}
 
 func displayFeedbackActive() bool { return displayFeedbackUntil.Load() != 0 }
 func startDisplayFeedback(frames [][]byte, delays []int, duration, brightness int) error {
@@ -24,12 +37,17 @@ func startDisplayFeedback(frames [][]byte, delays []int, duration, brightness in
 		return fmt.Errorf("Алиса занята. Повторите после ответа")
 	}
 	now := time.Now().UnixMilli()
+	displayFeedbackControl.Lock()
+	defer displayFeedbackControl.Unlock()
 	old := displayFeedbackUntil.Load()
 	if old != 0 || !displayFeedbackUntil.CompareAndSwap(0, now+int64(duration)*1000+250) {
 		return fmt.Errorf("На дисплее уже идёт предпросмотр")
 	}
 	displayFeedbackCancel.Store(false)
+	done := make(chan struct{})
+	displayFeedbackDone = done
 	go func() {
+		defer close(done)
 		defer displayFeedbackUntil.Store(0)
 		time.Sleep(150 * time.Millisecond) // existing clients yield before the first frame
 		deadline := time.Now().Add(time.Duration(duration) * time.Second)
@@ -41,8 +59,12 @@ func startDisplayFeedback(frames [][]byte, delays []int, duration, brightness in
 				break
 			}
 			wait := time.Duration(delays[i]) * time.Millisecond
-			if remaining := time.Until(deadline); wait > remaining { wait = remaining }
-			if wait > 0 { time.Sleep(wait) }
+			if remaining := time.Until(deadline); wait > remaining {
+				wait = remaining
+			}
+			if wait > 0 {
+				time.Sleep(wait)
+			}
 		}
 		_ = matrixPost(map[string]string{"action": "stop"})
 	}()

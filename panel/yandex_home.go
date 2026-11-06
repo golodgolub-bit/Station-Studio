@@ -37,7 +37,7 @@ type homeDevice struct {
 	State         string            `json:"state"`
 	Capabilities  []homeCapability  `json:"capabilities"`
 	Properties    []json.RawMessage `json:"properties"`
-	Groups        []string          `json:"groups,omitempty"`
+	Groups        homeReferences    `json:"groups,omitempty"`
 	Icon          any               `json:"icon,omitempty"`
 	Image         any               `json:"image,omitempty"`
 	Background    any               `json:"background,omitempty"`
