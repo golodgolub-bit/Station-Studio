@@ -1,0 +1,28 @@
+name: Sync community plugin downloads
+'on':
+  schedule:
+    - cron: '*/15 * * * *'
+  push:
+    branches: [main]
+    paths: ['community/sync_market.py', '.github/workflows/sync-community.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: station-community-downloads
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Mirror verified public packages
+        shell: python
+        run: |
+          import os, pathlib, subprocess, urllib.request
+          url='https://raw.githubusercontent.com/'+os.environ['GITHUB_REPOSITORY']+'/'+os.environ['GITHUB_SHA']+'/community/sync_market.py'
+          with urllib.request.urlopen(url,timeout=30) as r: source=r.read(100000)
+          pathlib.Path('sync_market.py').write_bytes(source)
+          subprocess.run(['python','sync_market.py'],check=True)
