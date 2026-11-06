@@ -15,7 +15,8 @@ import (
 	"time"
 )
 
-// Only the documented user IoT API. No extraction of credentials from Yandex apps.
+// Official IoT API plus an explicitly approved, isolated web session.
+// No extraction of credentials from installed Yandex apps.
 var homeHTTP = &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(r *http.Request, via []*http.Request) error {
 	return fmt.Errorf("Перенаправление API запрещено")
 }}
@@ -67,6 +68,9 @@ func clearPluginHomeGrants() {
 }
 func homeToken() string { b, _ := os.ReadFile(filepath.Join(base, "home-oauth")); return string(b) }
 func homeCall(key, method, path string, body any, out any) error {
+	if key == "" && homeWebConnected() {
+		return homeWebCall(method, path, body, out)
+	}
 	if key == "" {
 		return fmt.Errorf("Сначала подключите Дом с Алисой")
 	}
@@ -84,7 +88,7 @@ func homeCall(key, method, path string, body any, out any) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+key)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "Kontur/2.5 (+https://github.com/golodgolub-bit/Station-Studio)")
+	req.Header.Set("User-Agent", "AliceKit/2.5")
 	res, e := homeHTTP.Do(req)
 	if e != nil {
 		return fmt.Errorf("Нет связи с API умного дома")
@@ -134,13 +138,26 @@ func homeAccountAPI(w http.ResponseWriter, r *http.Request) {
 	homeMu.Lock()
 	defer homeMu.Unlock()
 	if r.Method == "GET" {
-		response(w, map[string]any{"connected": homeToken() != "", "provider": "yandex", "scopes": []string{"iot:view", "iot:control"}})
+		mode := "oauth"
+		if homeWebConnected() {
+			mode = "web_session"
+		}
+		response(w, map[string]any{"connected": homeConnected(), "provider": "yandex", "mode": mode, "scopes": func() []string {
+			if mode == "web_session" {
+				return []string{"yandex_web_session"}
+			}
+			return []string{"iot:view", "iot:control"}
+		}()})
 		return
 	}
 	if r.Method == "DELETE" {
+		homeWebMu.Lock()
+		homeLogin = nil
+		webErr := os.Remove(filepath.Join(base, "home-web-session"))
+		homeWebMu.Unlock()
 		e := os.Remove(filepath.Join(base, "home-oauth"))
 		clearPluginHomeGrants()
-		if e != nil && !os.IsNotExist(e) {
+		if (e != nil && !os.IsNotExist(e)) || (webErr != nil && !os.IsNotExist(webErr)) {
 			fail(w, "Не удалось удалить подключение", 500)
 			return
 		}
@@ -175,6 +192,10 @@ func homeAccountAPI(w http.ResponseWriter, r *http.Request) {
 		fail(w, "Не удалось сохранить подключение", 500)
 		return
 	}
+	homeWebMu.Lock()
+	homeLogin = nil
+	_ = os.Remove(filepath.Join(base, "home-web-session"))
+	homeWebMu.Unlock()
 	response(w, map[string]any{"connected": true, "devices": len(info.Devices)})
 }
 func homeAPI(w http.ResponseWriter, r *http.Request) {
@@ -183,7 +204,7 @@ func homeAPI(w http.ResponseWriter, r *http.Request) {
 		fail(w, "Нужен GET", 405)
 		return
 	}
-	if homeToken() == "" {
+	if !homeConnected() {
 		response(w, map[string]any{"connected": false, "devices": []any{}, "rooms": []any{}})
 		return
 	}
@@ -240,6 +261,9 @@ func homeExecute(q homeAction) (json.RawMessage, error) {
 		}
 	}
 	var result json.RawMessage
+	if key == "" && homeWebConnected() && homeIsWebColor(q) {
+		return homeWebColor(q)
+	}
 	e := homeCall(key, "POST", "/v1.0/devices/actions", map[string]any{"devices": []homeAction{q}}, &result)
 	if e != nil {
 		return nil, e

@@ -137,6 +137,14 @@ func fail(w http.ResponseWriter, s string, code int) {
 }
 func auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Ignored tiny bodies (e.g. POST {}) must be consumed before the TCP
+		// connection closes, otherwise Android may reset a completed response.
+		defer func() {
+			if r.Body != nil && r.ContentLength >= 0 && r.ContentLength <= 4096 {
+				_, _ = io.Copy(io.Discard, r.Body)
+				_ = r.Body.Close()
+			}
+		}()
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		a := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
@@ -295,6 +303,7 @@ func main() {
 	mux.HandleFunc("/api/airplay", auth(airplayAPI))
 	mux.HandleFunc("/api/home", auth(homeAPI))
 	mux.HandleFunc("/api/home/account", auth(homeAccountAPI))
+	mux.HandleFunc("/api/home/link", auth(homeLinkAPI))
 	mux.HandleFunc("/api/home/action", auth(homeActionAPI))
 	mux.HandleFunc("/api/plugins/home-permission", auth(pluginHomePermissionAPI))
 	mux.HandleFunc("/api/plugins/home", auth(pluginHomeAPI))

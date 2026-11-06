@@ -24,3 +24,11 @@ Yandex retains rights in the photograph, product design and marks.
 
 Android media client dependencies (AndroidX and Guava) are licensed under
 Apache-2.0. See third-party/android-media/LICENSE and NOTICE.
+
+Passwordless Yandex web-session protocol is adapted from AlexxIT/YandexStation
+(https://github.com/AlexxIT/YandexStation), MIT, Copyright (c) 2020 AlexxIT.
+See third-party/yandexstation/LICENSE. No upstream mobile OAuth client credentials
+are used. Cookie persistence, consent and device adapter are implemented in Go.
+
+QR images are generated locally with skip2/go-qrcode, MIT,
+Copyright (c) 2014 Tom Harwood. See third-party/go-qrcode/LICENSE.

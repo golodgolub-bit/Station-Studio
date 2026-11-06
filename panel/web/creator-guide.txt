@@ -81,7 +81,7 @@ SDK и packer: https://github.com/golodgolub-bit/Station-Studio, cmd/pluginpack 
 
 
 УМНЫЙ ДОМ (ALICEKIT 2.5)
-Приложение использует официальный пользовательский API Дома с Алисой. Пользователь предварительно подключает свой OAuth с iot:view / iot:control. Токен не доступен HTML-интерфейсу плагина.
+Пользователь подключает Дом с Алисой одноразовой ссылкой Яндекса; регистрация OAuth-клиента не нужна. Сессия остаётся на станции, HTML-плагины не получают её. Панель использует неофициальный облачный веб-интерфейс; не обещай офлайн-работу или неизменность протокола. Мост также совместим с отдельно настроенным официальным OAuth.
 Дополнительно к settings.read/settings.write мост station-studio-v1 поддерживает:
 {channel:"station-studio-v1",id:"unique",action:"home.read"}
 Ответ result содержит connected, devices, rooms, groups, scenarios, households, без OAuth-токена.

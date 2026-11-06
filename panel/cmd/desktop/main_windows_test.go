@@ -32,7 +32,7 @@ func TestSignedUpdateCannotBeModified(t *testing.T) {
 			t.Fatal("unsafe or old version", v)
 		}
 	}
-	if !newer("2.5.1") {
+	if !newer("2.5.2") {
 		t.Fatal("update not found")
 	}
 }
