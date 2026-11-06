@@ -24,7 +24,10 @@ window.StationPluginViewer={async open(name,settings,api,dialog,toast){
     else if(q.action==='settings.write')result=await api('plugins/settings?name='+encodeURIComponent(name),{values:q.values});
     else if(q.action==='home.read')result=await api('plugins/home?name='+encodeURIComponent(name));
     else if(q.action==='home.control')result=await api('plugins/home?name='+encodeURIComponent(name),q.data);
-    else if(q.action==='runtime.info')result={version:'2.6',edition:tv?'tv':'touch',input:tv?'remote':'pointer',assetLimit:16*1024*1024,htmlLimit:256*1024,externalNetwork:false,assets:true};
+    else if(q.action==='station.read')result=await api('plugins/runtime?name='+encodeURIComponent(name));
+    else if(q.action==='media.control')result=await api('plugins/runtime?name='+encodeURIComponent(name),{action:q.action,command:q.command});
+    else if(q.action==='display.preview')result=await api('plugins/runtime?name='+encodeURIComponent(name),{action:q.action,frames:q.frames,delays:q.delays,duration:q.duration,brightness:q.brightness});
+    else if(q.action==='runtime.info')result={version:'2.7',edition:tv?'tv':'touch',input:tv?'remote':'pointer',assetLimit:16*1024*1024,htmlLimit:256*1024,externalNetwork:false,assets:true,telemetry:true,mediaControl:true,displayPreview:true};
     else if(q.action==='assets.read'){
      if(typeof q.path!=='string'||q.path.length>512)throw Error('Укажите путь ресурса внутри своего плагина');
      const r=await fetch('/api/plugins/asset?name='+encodeURIComponent(name)+'&path='+encodeURIComponent(q.path),{headers:{Authorization:'Bearer '+(localStorage.getItem('stationAccess')||'')}});

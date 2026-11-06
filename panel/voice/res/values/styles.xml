@@ -1,0 +1,1 @@
+<resources><style name="AliceKitTVTheme" parent="android:style/Theme.Material.Light.NoActionBar"><item name="android:windowBackground">@drawable/alicekit_launch</item><item name="android:colorAccent">#7739ef</item><item name="android:windowActionModeOverlay">true</item></style></resources>

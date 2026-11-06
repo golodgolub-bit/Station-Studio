@@ -258,8 +258,10 @@ func homeWebInfo(c *http.Client) (homeInfo, error) {
 			Name string `json:"name"`
 			All  []struct {
 				homeDevice
-				ItemType string `json:"item_type"`
-				RoomName string `json:"room_name"`
+				ItemType string          `json:"item_type"`
+				RoomName string          `json:"room_name"`
+				Devices  json.RawMessage `json:"devices"`
+				Items    json.RawMessage `json:"items"`
 			} `json:"all"`
 			Rooms []json.RawMessage `json:"rooms"`
 		} `json:"households"`
@@ -297,6 +299,15 @@ func homeWebInfo(c *http.Client) (homeInfo, error) {
 			}
 		}
 		for _, item := range house.All {
+			if item.ItemType == "group" && homeID.MatchString(item.ID) {
+				members := homeMemberIDs(item.Devices)
+				if len(members) == 0 {
+					members = homeMemberIDs(item.Items)
+				}
+				g, _ := json.Marshal(map[string]any{"id": item.ID, "name": item.Name, "type": item.Type, "room": roomOfDevice[item.ID], "devices": members, "capabilities": item.Capabilities})
+				info.Groups = append(info.Groups, g)
+				continue
+			}
 			if item.ItemType != "device" || !homeID.MatchString(item.ID) || seen[item.ID] {
 				continue
 			}

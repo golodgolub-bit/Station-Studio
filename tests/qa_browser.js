@@ -1,0 +1,29 @@
+(async()=>{
+ const screen=new URLSearchParams(location.search).get('screen')||'phone-home',report={screen,checks:[],errors:[]};
+ const check=(value,message)=>{report.checks.push({pass:!!value,message});if(!value)throw Error(message)};
+ addEventListener('error',e=>report.errors.push(e.message));
+ const wait=ms=>new Promise(r=>setTimeout(r,ms));async function until(fn){for(let i=0;i<60;i++){if(fn())return;await wait(100)}throw Error('UI timeout')}
+ try{
+  await until(()=>document.body.classList.contains('station-tv')?document.querySelector('#view .hero'):document.querySelector('#app')?.hidden===false);await wait(700);
+  check(document.documentElement.scrollWidth<=innerWidth+1,'Нет горизонтального переполнения');
+  const groups=document.querySelectorAll('.home-device-group');check(groups.length===1,'Группа дома показана одной карточкой');
+  check(![...document.querySelectorAll('.home-devices .home-device b')].some(e=>e.textContent==='Торшер'),'Дочерние устройства не дублируются');
+  if(screen.startsWith('tv')){
+   document.querySelector('nav [data-section=appearance]').click();await until(()=>[...document.querySelectorAll('#view .tile h3')].some(e=>e.textContent==='Кольцо'));
+   [...document.querySelectorAll('#view .tile h3')].find(e=>e.textContent==='Кольцо').closest('button').click();await until(()=>document.querySelector('.ring-dialog')?.open);
+   const sync=[...document.querySelectorAll('#dialog button')].find(e=>e.textContent==='Синхронизировать с музыкой');check(!!sync,'В кольце есть явная кнопка синхронизации');sync.focus();stationTvActivate();await until(()=>document.querySelector('.visual-dialog')?.open);await wait(500);
+   check([...document.querySelectorAll('#dialog select')].some(s=>s.value==='ring'),'Из кольца выбирается целевое кольцо');
+   const start=[...document.querySelectorAll('#dialog button')].find(e=>e.textContent==='Включить светомузыку');check(!!start&&!start.disabled,'Включение доступно с пульта');
+   const controls=[...document.querySelectorAll('#dialog button,#dialog input,#dialog select')].filter(e=>e.getClientRects().length&&!e.disabled&&!e.closest('[hidden]'));
+   const reached=new Set([controls[0]]),queue=[controls[0]];while(queue.length){const from=queue.shift();for(const key of ['up','down','left','right']){from.focus();stationTvKey(key);const to=document.activeElement;if(controls.includes(to)&&!reached.has(to)){reached.add(to);queue.push(to)}}}
+   check(reached.has(start),'Стрелками можно дойти до включения');check(controls.every(c=>reached.has(c)),'Все элементы окна достижимы стрелками');
+   start.focus();stationTvActivate();await wait(900);check(document.querySelector('.visual-status').textContent.includes('Работает'),'Статус запуска подтверждён ответом');
+   if(screen==='tv-ring'){stationTvBack();[...document.querySelectorAll('#view .tile h3')].find(e=>e.textContent==='Кольцо').closest('button').click();await wait(300)}
+   if(screen==='tv-switch'){
+    stationTvBack();const dialog=document.getElementById('dialog');document.getElementById('dialogBody').innerHTML='<h2>Проверка переключателя</h2><label class="check"><span>Синхронизация с музыкой</span><input type="checkbox"></label>';dialog.showModal();await until(()=>dialog.querySelector('.tv-switch'));const b=dialog.querySelector('.tv-switch'),input=dialog.querySelector('input');let changes=0;input.addEventListener('change',()=>changes++);b.focus();stationTvActivate();check(input.checked&&changes===1&&b.getAttribute('aria-checked')==='true','OK меняет переключатель ровно один раз')
+   }
+  }else if(screen==='phone-ring'){showTab('light');studioPane('ring');await wait(700)}else if(screen==='phone-music'){showTab('music');await wait(500)}else if(screen==='phone-visual'){showTab('light');studioPane('music');await wait(500)}
+  await wait(800);
+ }catch(e){report.errors.push(e.message)}
+ const result=document.createElement('pre');result.id='qaResult';result.hidden=true;result.textContent=JSON.stringify(report);document.body.append(result);await fetch('/qa/report?screen='+screen,{method:'POST',body:JSON.stringify(report)});document.documentElement.dataset.qaDone='true';
+})();

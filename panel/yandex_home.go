@@ -30,13 +30,20 @@ type homeCapability struct {
 	State      map[string]any `json:"state"`
 }
 type homeDevice struct {
-	ID           string            `json:"id"`
-	Name         string            `json:"name"`
-	Type         string            `json:"type"`
-	Room         string            `json:"room"`
-	State        string            `json:"state"`
-	Capabilities []homeCapability  `json:"capabilities"`
-	Properties   []json.RawMessage `json:"properties"`
+	ID            string            `json:"id"`
+	Name          string            `json:"name"`
+	Type          string            `json:"type"`
+	Room          string            `json:"room"`
+	State         string            `json:"state"`
+	Capabilities  []homeCapability  `json:"capabilities"`
+	Properties    []json.RawMessage `json:"properties"`
+	Groups        []string          `json:"groups,omitempty"`
+	Icon          any               `json:"icon,omitempty"`
+	Image         any               `json:"image,omitempty"`
+	Background    any               `json:"background,omitempty"`
+	IconURL       string            `json:"icon_url,omitempty"`
+	ImageURL      string            `json:"image_url,omitempty"`
+	BackgroundURL string            `json:"background_url,omitempty"`
 }
 type homeInfo struct {
 	Status     string            `json:"status"`

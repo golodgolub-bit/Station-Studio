@@ -26,6 +26,7 @@ type musicTap struct {
 	last            uint32
 	progress        time.Time
 	pid             string
+	idleSince       time.Time
 }
 
 var errMusicIdle = errors.New("Музыка на паузе — ожидаем продолжения")
@@ -136,68 +137,9 @@ func openMusicTap(source string) (*musicTap, error) {
 	if pid == "" {
 		return nil, fmt.Errorf("Ожидаем звук выбранного музыкального сервиса")
 	}
-	maps := read("/proc/" + pid + "/maps")
-	var start, end uint64
-	for _, line := range strings.Split(maps, "\n") {
-		if strings.Contains(line, "/dev/ashmem/AudioFlinger::Client("+pid+")") && strings.Contains(line, "rw-s") {
-			if start != 0 {
-				return nil, fmt.Errorf("Неоднозначный музыкальный буфер")
-			}
-			p := strings.Split(strings.Fields(line)[0], "-")
-			start, _ = strconv.ParseUint(p[0], 16, 64)
-			end, _ = strconv.ParseUint(p[1], 16, 64)
-		}
-	}
-	if start == 0 || end-start > 4<<20 {
-		return nil, fmt.Errorf("У плеера пока нет поддерживаемого звукового буфера")
-	}
-	f, e := os.Open("/proc/" + pid + "/mem")
-	if e != nil {
-		return nil, e
-	}
-	bad := func() (*musicTap, error) {
-		f.Close()
-		return nil, fmt.Errorf("Музыка на паузе или звуковой буфер пока не готов")
-	}
-	a := make([]byte, end-start)
-	b := make([]byte, end-start)
-	if n, _ := f.ReadAt(a, int64(start)); n != len(a) {
-		return bad()
-	}
-	time.Sleep(160 * time.Millisecond)
-	if n, _ := f.ReadAt(b, int64(start)); n != len(b) {
-		return bad()
-	}
-	var tap *musicTap
-	for i := 0; i+0xd0 < len(a); i += 16 {
-		u := func(data []byte, o int) uint32 { return binary.LittleEndian.Uint32(data[i+o:]) }
-		rate := int(u(b, 0x14))
-		frames := int(u(b, 0xa8))
-		if rate != 44100 && rate != 48000 || frames < 128 || frames > 65536 {
-			continue
-		}
-		capacity := 1
-		for capacity < frames {
-			capacity *= 2
-		}
-		if i+0xd0+capacity*4 > len(a) {
-			continue
-		}
-		delta := u(b, 0) - u(a, 0)
-		front, rear := u(b, 0xb0), u(b, 0xb4)
-		if delta < 1000 || delta > 24000 || rear-front > uint32(capacity) || front-u(b, 0) > 4096 {
-			continue
-		}
-		if tap != nil {
-			return bad()
-		}
-		tap = &musicTap{f: f, address: int64(start) + int64(i), buffer: int64(start) + int64(i) + 0xd0, capacity: capacity, rate: rate, progress: time.Now(), pid: pid}
-	}
-	if tap == nil {
-		return bad()
-	}
-	return tap, nil
+	return discoverMusicBuffers(pid, read("/proc/"+pid+"/maps"))
 }
+
 func (t *musicTap) sample() (musicLight, error) {
 	result := musicLight{}
 	header := make([]byte, 0xd0)
@@ -210,8 +152,17 @@ func (t *musicTap) sample() (musicLight, error) {
 		t.last = position
 	}
 	if time.Since(t.progress) > 300*time.Millisecond {
+		if t.idleSince.IsZero() {
+			t.idleSince = time.Now()
+		}
+		// A player can replace its AudioTrack after pause/seek. The old mapping
+		// remains readable forever, so retaining it forever prevents recovery.
+		if time.Since(t.idleSince) > 2*time.Second {
+			return result, fmt.Errorf("Звуковой буфер обновляется")
+		}
 		return result, errMusicIdle
 	}
+	t.idleSince = time.Time{}
 	count := 2048
 	if t.capacity < count {
 		count = t.capacity
@@ -492,6 +443,9 @@ func musicVisualWorker(ctx context.Context, done chan struct{}, q musicVisualCon
 			}
 			musicMu.Unlock()
 			if q.Target != "ring" {
+				if displayFeedbackActive() {
+					continue
+				}
 				if assistantBusy() {
 					musicOwnsMatrix.Store(false)
 					if ownedMatrix {
@@ -536,7 +490,8 @@ func musicVisualAPI(w http.ResponseWriter, r *http.Request) {
 				state = "native-priority"
 			}
 		}
-		response(w, map[string]any{"active": musicCancel != nil, "state": state, "config": musicConfig, "error": musicLastError, "level": musicLevels.Level, "matrixOwned": musicOwnsMatrix.Load()})
+		palette := coverSnapshot()
+		response(w, map[string]any{"active": musicCancel != nil, "state": state, "config": musicConfig, "error": musicLastError, "level": musicLevels.Level, "bands": musicLevels.Bands, "matrixOwned": musicOwnsMatrix.Load(), "coverAvailable": palette.Available, "coverError": palette.Error})
 		musicMu.Unlock()
 		return
 	}

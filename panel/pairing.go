@@ -174,6 +174,7 @@ func pairingAPI(w http.ResponseWriter, r *http.Request) {
 	proof := pairingMAC(pairingCode, q.Nonce+"|"+tlsFingerprint+"|"+key)
 	pairingCode = ""
 	response(w, map[string]any{"ok": true, "token": key, "clientId": client.ID, "proof": proof, "model": "Station Max", "version": 2})
+	go happyConnectionFeedback()
 }
 func clientsAPI(w http.ResponseWriter, r *http.Request) {
 	pairMu.Lock()

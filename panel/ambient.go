@@ -289,6 +289,9 @@ func ambientWorker(ctx context.Context, done chan struct{}, q ambientConfig) {
 		case <-ctx.Done():
 			return
 		case now := <-ticker.C:
+			if displayFeedbackActive() {
+				continue
+			}
 			if q.Duration != 0 && now.After(deadline) {
 				return
 			}

@@ -1,0 +1,40 @@
+name: AliceKit interface and agent validation
+'on':
+  push:
+    branches: [codex/alicekit-2.7-validation]
+permissions:
+  contents: read
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+      - name: Run isolated agent tests
+        working-directory: panel
+        run: go test -v .
+      - name: Cross-build native station agent
+        working-directory: panel
+        run: GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -o /tmp/station-panel .
+  interface:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund playwright-core@1.64.1
+      - name: Validate phone and TV views against isolated fixtures
+        run: |
+          mkdir -p artifacts
+          python3 tests/qa_server.py &
+          node tests/render.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: alicekit-interface-validation
+          path: artifacts/

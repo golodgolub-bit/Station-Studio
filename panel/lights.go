@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -201,7 +202,15 @@ func lightsActionAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	lampsMu.Lock()
 	selected := []lamp{}
+	seenIDs := map[string]bool{}
 	for _, id := range q.IDs {
+		if seenIDs[id] {
+			continue
+		}
+		seenIDs[id] = true
+		if strings.HasPrefix(id, "home:") {
+			continue
+		}
 		found := false
 		for _, l := range lampList {
 			if l.ID == id {
@@ -217,6 +226,33 @@ func lightsActionAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	lampsMu.Unlock()
+	if len(q.IDs) > 16 {
+		fail(w, "До 16 ламп за один запуск", 400)
+		return
+	}
+	homeCount := 0
+	for _, id := range q.IDs {
+		if !strings.HasPrefix(id, "home:") {
+			continue
+		}
+		if !seenIDs[id] {
+			continue
+		}
+		delete(seenIDs, id)
+		if !homeID.MatchString(strings.TrimPrefix(id, "home:")) || !homeConnected() {
+			fail(w, "Сначала подключите Дом с Алисой", 400)
+			return
+		}
+		selected = append(selected, lamp{ID: id, Name: strings.TrimPrefix(id, "home:"), Kind: "yandex"})
+		homeCount++
+	}
+	if homeCount > 4 {
+		fail(w, "За один запуск — до 4 облачных ламп", 400)
+		return
+	}
+	if homeCount > 0 && q.Interval < 4 {
+		q.Interval = 4
+	}
 	stopLampsLocked()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -240,12 +276,46 @@ func parseLampColor(s string) ([3]int, error) {
 }
 func lampWorker(ctx context.Context, done chan struct{}, q lampShow, selected []lamp) {
 	defer close(done)
+	childCtx, cancelAudio := context.WithCancel(ctx)
+	defer cancelAudio()
+	var audioPeak atomic.Uint64
+	if q.Mode == "music" {
+		go lampAudioMonitor(childCtx, &audioPeak)
+	}
 	original := map[string]json.RawMessage{}
+	restoreHome := map[string]homeDevice{}
+	changedHome := map[string]bool{}
 	restoreY := map[string][]string{}
 	ready := []lamp{}
-	setError := func(e error) { lampsMu.Lock(); lampsError = e.Error(); lampsMu.Unlock() }
+	setError := func(e error) {
+		lampsMu.Lock()
+		lampsError = ""
+		if e != nil {
+			lampsError = e.Error()
+		}
+		lampsMu.Unlock()
+	}
 	for _, l := range selected {
-		if l.Kind == "wled" {
+		if l.Kind == "yandex" {
+			d, e := homeLightSnapshot(l)
+			if e != nil {
+				setError(e)
+				continue
+			}
+			canRestore := false
+			for _, c := range d.Capabilities {
+				i, _ := c.State["instance"].(string)
+				if c.Type == "devices.capabilities.color_setting" && c.State["value"] != nil && (i == "rgb" || i == "hsv" || i == "temperature_k") {
+					canRestore = true
+				}
+			}
+			if !canRestore {
+				setError(fmt.Errorf("Нет исходного цвета «%s»: светомузыка не запущена", d.Name))
+				continue
+			}
+			l.Name = d.Name
+			restoreHome[l.ID] = d
+		} else if l.Kind == "wled" {
 			b, e := wledRequest(l, nil)
 			if e != nil {
 				setError(e)
@@ -264,7 +334,13 @@ func lampWorker(ctx context.Context, done chan struct{}, q lampShow, selected []
 	}
 	defer func() {
 		for _, l := range ready {
-			if l.Kind == "wled" {
+			if l.Kind == "yandex" {
+				if changedHome[l.ID] {
+					if e := restoreHomeLight(restoreHome[l.ID]); e != nil {
+						setError(e)
+					}
+				}
+			} else if l.Kind == "wled" {
 				if _, e := wledRequest(l, original[l.ID]); e != nil {
 					setError(e)
 				}
@@ -313,6 +389,8 @@ func lampWorker(ctx context.Context, done chan struct{}, q lampShow, selected []
 				palette = cover.Palette
 				if !cover.Available {
 					setError(fmt.Errorf("%s", cover.Error))
+					nextCover = now.Add(time.Second)
+					continue
 				} else {
 					setError(e)
 				}
@@ -323,17 +401,17 @@ func lampWorker(ctx context.Context, done chan struct{}, q lampShow, selected []
 				brightness = q.Min + int((1+math.Sin(float64(index)*.6))/2*float64(q.Max-q.Min))
 			}
 			if q.Mode == "music" {
-				musicMu.Lock()
-				active := musicCancel != nil
-				level := musicLevels.Level
-				musicMu.Unlock()
-				if !active {
-					setError(fmt.Errorf("Включите музыкальную визуализацию: нужен источник звука плеера"))
+				level := math.Float64frombits(audioPeak.Swap(0))
+				if level == 0 {
+					setError(fmt.Errorf("Ожидаем музыку выбранного плеера"))
 					continue
 				}
 				brightness = q.Min + int(math.Min(1, math.Sqrt(level*q.Gain))*float64(q.Max-q.Min))
 			}
 			for i, l := range ready {
+				if ctx.Err() != nil {
+					return
+				}
 				position := float64(i) / float64(len(ready))
 				if q.Motion != "static" {
 					position += float64(index) * .08
@@ -341,7 +419,12 @@ func lampWorker(ctx context.Context, done chan struct{}, q lampShow, selected []
 				r, g, b := paletteBlend(palette, position)
 				color := []int{int(r), int(g), int(b)}
 				var e error
-				if l.Kind == "wled" {
+				if l.Kind == "yandex" {
+					e = homeLightColor(restoreHome[l.ID], [3]int{color[0], color[1], color[2]}, brightness)
+					if e == nil {
+						changedHome[l.ID] = true
+					}
+				} else if l.Kind == "wled" {
 					_, e = wledRequest(l, map[string]any{"on": true, "bri": brightness * 255 / 100, "transition": 5, "seg": []any{map[string]any{"id": 0, "fx": 0, "col": []any{color}}}})
 				} else {
 					_, e = yeelightRequest(l, "set_scene", []any{"color", color[0]<<16 | color[1]<<8 | color[2], brightness})
@@ -351,6 +434,49 @@ func lampWorker(ctx context.Context, done chan struct{}, q lampShow, selected []
 				}
 			}
 			index++
+		}
+	}
+}
+
+// Lamp shows own their audio subscription: enabling a lamp never takes over
+// the station ring or display. Peak hold covers slow cloud/LAN update periods.
+func lampAudioMonitor(ctx context.Context, peak *atomic.Uint64) {
+	var tap *musicTap
+	defer func() {
+		if tap != nil {
+			tap.f.Close()
+		}
+	}()
+	timer := time.NewTicker(50 * time.Millisecond)
+	defer timer.Stop()
+	var retry time.Time
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-timer.C:
+			if tap == nil {
+				if now.Before(retry) {
+					continue
+				}
+				tap, _ = openMusicTap("selected")
+				retry = now.Add(time.Second)
+				if tap == nil {
+					continue
+				}
+			}
+			sample, e := tap.sample()
+			if e != nil {
+				if e != errMusicIdle {
+					tap.f.Close()
+					tap = nil
+				}
+				continue
+			}
+			old := peak.Load()
+			for sample.Level > math.Float64frombits(old) && !peak.CompareAndSwap(old, math.Float64bits(sample.Level)) {
+				old = peak.Load()
+			}
 		}
 	}
 }

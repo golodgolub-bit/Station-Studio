@@ -28,6 +28,7 @@ func matrixAPI(w http.ResponseWriter, r *http.Request) {
 	var data []byte
 	var e error
 	if r.Method == "POST" {
+		displayFeedbackCancel.Store(true)
 		musicControlMu.Lock()
 		defer musicControlMu.Unlock()
 		stopMusicVisualLocked()
