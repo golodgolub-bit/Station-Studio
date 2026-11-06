@@ -46,16 +46,31 @@ func startDisplayFeedback(frames [][]byte, delays []int, duration, brightness in
 	displayFeedbackCancel.Store(false)
 	done := make(chan struct{})
 	displayFeedbackDone = done
+	// Return a real service error to a plugin, rather than acknowledging a
+	// preview that never reached the hardware controller.
+	time.Sleep(150 * time.Millisecond)
+	if assistantBusy() {
+		displayFeedbackUntil.Store(0)
+		close(done)
+		return fmt.Errorf("Алиса занята. Повторите после ответа")
+	}
+	if e := matrixPost(map[string]any{"action": "play", "frames": [][]byte{frames[0]}, "delays": []int{delays[0]}, "duration": 5, "brightness": brightness}); e != nil {
+		displayFeedbackUntil.Store(0)
+		close(done)
+		return e
+	}
 	go func() {
 		defer close(done)
 		defer displayFeedbackUntil.Store(0)
-		time.Sleep(150 * time.Millisecond) // existing clients yield before the first frame
 		deadline := time.Now().Add(time.Duration(duration) * time.Second)
 		for i := 0; time.Now().Before(deadline); i = (i + 1) % len(frames) {
 			if assistantBusy() || displayFeedbackCancel.Load() {
 				break
 			}
-			if matrixPost(map[string]any{"action": "play", "frames": [][]byte{frames[i]}, "delays": []int{delays[i]}, "duration": 1, "brightness": brightness}) != nil {
+			// The display daemon requires a lease of at least five seconds.
+			// This worker still ends the user preview after 1–8 seconds and
+			// explicitly releases it before any subsequent display command.
+			if matrixPost(map[string]any{"action": "play", "frames": [][]byte{frames[i]}, "delays": []int{delays[i]}, "duration": 5, "brightness": brightness}) != nil {
 				break
 			}
 			wait := time.Duration(delays[i]) * time.Millisecond

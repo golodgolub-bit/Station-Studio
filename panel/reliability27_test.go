@@ -22,6 +22,13 @@ func TestPreviewCancellationFinishesBeforeAnotherDisplayCommand(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var value map[string]any
 		json.NewDecoder(r.Body).Decode(&value)
+		if value["action"] == "play" {
+			if lease, _ := value["duration"].(float64); lease < 5 {
+				t.Error("display daemon rejects a lease below five seconds")
+				w.WriteHeader(400)
+				return
+			}
+		}
 		calls <- value["action"].(string)
 		w.Write([]byte(`{"ok":true}`))
 	}))
@@ -59,6 +66,59 @@ func TestPreviewCancellationFinishesBeforeAnotherDisplayCommand(t *testing.T) {
 	if len(calls) != 0 {
 		t.Fatal("old preview overwrote a later command")
 	}
+}
+
+func TestAutomaticAmbientRestorePreservesNewerChoicesAndPreview(t *testing.T) {
+	oldBase, oldClient := base, matrixClient
+	oldCancel, oldDone, oldCurrent := ambientCancel, ambientDone, ambientCurrent
+	oldMusic, oldMusicDone := musicCancel, musicDone
+	oldUntil, oldFeedbackCancel := displayFeedbackUntil.Load(), displayFeedbackCancel.Load()
+	base = t.TempDir()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"ok":true}`)) }))
+	defer server.Close()
+	matrixClient = &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, "tcp", strings.TrimPrefix(server.URL, "http://"))
+	}}}
+	defer func() {
+		base = oldBase
+		matrixClient = oldClient
+		ambientCancel = oldCancel
+		ambientDone = oldDone
+		ambientCurrent = oldCurrent
+		musicCancel = oldMusic
+		musicDone = oldMusicDone
+		displayFeedbackUntil.Store(oldUntil)
+		displayFeedbackCancel.Store(oldFeedbackCancel)
+	}()
+	canceled := 0
+	closed := make(chan struct{})
+	close(closed)
+	ambientCancel = func() { canceled++ }
+	ambientDone = closed
+	musicCancel = func() { canceled++ }
+	musicDone = closed
+	displayFeedbackUntil.Store(1)
+	displayFeedbackCancel.Store(false)
+	call := func() {
+		request := httptest.NewRequest("POST", "/api/ambient", strings.NewReader(`{"action":"start","style":"digital","font":"pixel","speed":6,"brightness":60}`))
+		request = request.WithContext(context.WithValue(request.Context(), ambientResumeKey{}, true))
+		out := httptest.NewRecorder()
+		ambientAPI(out, request)
+		if out.Code != 200 {
+			t.Fatal(out.Body.String())
+		}
+	}
+	call()
+	if canceled != 0 || displayFeedbackCancel.Load() {
+		t.Fatal("startup restore canceled a newer user choice")
+	}
+	ambientCancel = nil
+	ambientDone = nil
+	call()
+	if canceled != 0 || musicCancel == nil || displayFeedbackCancel.Load() {
+		t.Fatal("background restoration stopped music or pairing preview")
+	}
+	stopAmbient()
 }
 
 func TestNewMusicScenesRemainSilentWithoutAudio(t *testing.T) {

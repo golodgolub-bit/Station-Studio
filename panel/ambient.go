@@ -49,6 +49,8 @@ var ambientFaceSmall font.Face
 var fontMu sync.Mutex
 var zone *time.Location
 
+type ambientResumeKey struct{}
+
 func initAmbient() {
 	f, _ := opentype.Parse(goregular.TTF)
 	ambientFace, _ = opentype.NewFace(f, &opentype.FaceOptions{Size: 12, DPI: 72, Hinting: font.HintingFull})
@@ -307,6 +309,11 @@ func ambientWorker(ctx context.Context, done chan struct{}, q ambientConfig) {
 				title, artist, _ = sessionMetadata(dump, selectedProvider())
 				nextMeta = now.Add(3 * time.Second)
 			}
+			// Metadata lookup can outlive an ownership change. Recheck after it
+			// so a pending clock frame cannot overwrite a newly paired smile.
+			if displayFeedbackActive() || musicOwnsMatrix.Load() || assistantBusy() {
+				continue
+			}
 			matrixPost(map[string]any{"action": "play", "frames": [][]byte{ambientFrame(q, now, tick, title, artist)}, "delays": []int{100}, "duration": 5, "brightness": q.Brightness})
 			tick++
 		}
@@ -342,9 +349,20 @@ func ambientAPI(w http.ResponseWriter, r *http.Request) {
 		fail(w, "Проверьте параметры дисплея", 400)
 		return
 	}
-	stopAmbientLocked()
-	stopMusicVisualLocked()
-	stopDisplayFeedback()
+	resuming, _ := r.Context().Value(ambientResumeKey{}).(bool)
+	if resuming {
+		ambientMu.Lock()
+		alreadyActive := ambientCancel != nil
+		ambientMu.Unlock()
+		if alreadyActive {
+			response(w, map[string]bool{"ok": true})
+			return
+		}
+	} else {
+		stopAmbientLocked()
+		stopMusicVisualLocked()
+		stopDisplayFeedback()
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	ambientMu.Lock()
@@ -375,6 +393,7 @@ func resumeAmbient() {
 	b, _ = json.Marshal(q)
 	out := &captureResponse{header: make(http.Header)}
 	request, _ := http.NewRequest("POST", "http://local/api/ambient", bytes.NewReader(b))
+	request = request.WithContext(context.WithValue(request.Context(), ambientResumeKey{}, true))
 	ambientAPI(out, request)
 }
 func ambientPreviewAPI(w http.ResponseWriter, r *http.Request) {
