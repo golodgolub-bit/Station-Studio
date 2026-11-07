@@ -1,7 +1,7 @@
 name: AliceKit interface and agent validation
 'on':
   push:
-    branches: [main, codex/alicekit-2.9.0-validation]
+    branches: [main, codex/alicekit-2.9.1-validation]
   workflow_dispatch:
 permissions:
   contents: read

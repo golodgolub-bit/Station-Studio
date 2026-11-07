@@ -20,3 +20,5 @@ details{padding:15px 0;font-size:14px;color:var(--muted)}details+details{border-
 body[data-setup-step="2"] .scene{height:100px}body[data-setup-step="2"] .product-photo{height:95px}body[data-setup-step="2"] .connection-orbit{top:8px}body[data-setup-step="2"] .scene-caption{display:none}
 
 button{border-radius:999px}.network-candidates{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}.network-candidates p{flex-basis:100%;font-size:14px}.network-candidates button{font-variant-numeric:tabular-nums}.navigation button{border-radius:999px}
+
+#rootEvidence{display:grid;grid-template-columns:1fr;gap:7px;margin:18px 0}#rootEvidence dt{font-weight:650;color:#776489;margin-top:9px}#rootEvidence dd{margin:0;overflow-wrap:anywhere;line-height:1.55}#rootRecoveryBox .wide{margin-top:12px}
