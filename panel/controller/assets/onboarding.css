@@ -14,3 +14,5 @@ details{padding:15px 0;font-size:14px;color:var(--muted)}details+details{border-
 @media(min-width:680px){main{padding:28px 32px 44px}.scene{height:190px}.product-photo{height:175px}.surface{padding:30px}.navigation{margin-top:24px}.surface>details{padding:18px 0}}
 @media(max-width:350px){main{padding:14px 15px 28px}.surface{padding:20px}details.surface{padding:15px 20px}.brand{font-size:17px}.scene{height:135px}.product-photo{height:120px}#steps button{font-size:10px}.network-hint{flex-direction:column;align-items:stretch}.section-title{flex-wrap:wrap;gap:6px}.section-title .hint{font-size:10px}#readiness{grid-template-columns:1fr}.setup-task{gap:11px}}
 @media(prefers-reduced-motion:reduce){*,*:before{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+.desktop-guide #rootPreparation{display:none}
