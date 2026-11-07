@@ -36,7 +36,7 @@ import (
 //go:embed assets/*
 var assets embed.FS
 
-const version = "2.8.1"
+const version = "2.8.2"
 const channel = "https://github.com/golodgolub-bit/Station-Studio/releases/latest/download/channel.json"
 const fakeKey = "000000000000000000000000000000000000000000000000"
 
