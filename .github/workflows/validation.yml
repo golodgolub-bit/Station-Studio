@@ -1,7 +1,7 @@
 name: AliceKit interface and agent validation
 'on':
   push:
-    branches: [main, codex/alicekit-2.7-validation]
+    branches: [main, codex/alicekit-2.8-validation]
   workflow_dispatch:
 permissions:
   contents: read
@@ -16,7 +16,7 @@ jobs:
           go-version: '1.27.3'
       - name: Run isolated agent tests
         working-directory: panel
-        run: go test -v .
+        run: go test -v ./...
       - name: Cross-build native station agent
         working-directory: panel
         run: GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -o /tmp/station-panel .

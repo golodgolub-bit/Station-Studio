@@ -1,0 +1,11 @@
+{
+  "bootstrap/root-bridge": "f53c3e127a95b8f78b0934ccea73382964d35fd7b3dd21b8b0ce258f50704474",
+  "hybrid/common.sh": "9f00e7423790a046788df0b55dddc9af4e8b22144fd99ea6afec8b372ec4f299",
+  "hybrid/rootd": "30ee1e1f92623322ccdc77a3ff1d548ebab4f3ee003d5fc3258b473b490a927f",
+  "hybrid/permissive": "f580ff0283a181936309d2d1fcf2dae0e7da6e21a7888bdc10e6675947d3746b",
+  "hybrid/rootd.rc": "0940cfb282167e54193a10126de0c9cc1e62a2390201884220a42788d0b1bbf4",
+  "hybrid/install-run.sh": "61d4fa6970f5f59d5d57e4de775ec067ccd6654dadc1c984c43acef28f39c6e7",
+  "hybrid/install-device.sh": "9d674190e1d35208500efd829b3601f09f5cf626c5ac2bed748b216f7b3e62af",
+  "hybrid/rollback-device.sh": "8ba1b299e397cff2861e12666893484683b53aa669e188cb825c2e99e078c01a",
+  "hybrid/rollback-run.sh": "7d496ff042a09b5aca0a6dc4feb60bab1f1fd4f159f8cd7635f91344a13ecd50"
+}

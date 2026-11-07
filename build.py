@@ -20,6 +20,8 @@ if args.android:
   src=ROOT/'panel'/folder;build=out/('build-'+folder);build.mkdir(exist_ok=True)
   assets=build/'assets';assets.mkdir(exist_ok=True)
   if folder=='controller':
+   shutil.copytree(src/'assets',assets,dirs_exist_ok=True)
+   for asset in ['station-max.png','station-max-top.jpg','kontur.png','launch-star.png']:shutil.copyfile(ROOT/'panel/web'/asset,assets/asset)
    shutil.copyfile(ROOT/'panel/web/manrope.ttf',assets/'manrope.ttf')
    shutil.copytree(ROOT/'third-party/manrope',assets/'third-party/manrope',dirs_exist_ok=True)
   deps=[]

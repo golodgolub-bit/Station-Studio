@@ -115,6 +115,9 @@ func textFrameLine(dst []byte, text string, y int, face font.Face, offset int) {
 }
 func ambientFrame(q ambientConfig, now time.Time, tick int, title, artist string) []byte {
 	f := make([]byte, 400)
+	if q.Style == "blank" {
+		return f
+	}
 	if len(q.Background) == 400 {
 		for i, v := range q.Background {
 			f[i] = byte(float64(v) * .28)
@@ -344,7 +347,7 @@ func ambientAPI(w http.ResponseWriter, r *http.Request) {
 		response(w, map[string]bool{"ok": true})
 		return
 	}
-	styles := map[string]bool{"digital": true, "stars": true, "orbit": true, "cat": true, "analog": true, "binary": true, "stack": true, "segments": true, "track": true, "text": true}
+	styles := map[string]bool{"blank": true, "digital": true, "stars": true, "orbit": true, "cat": true, "analog": true, "binary": true, "stack": true, "segments": true, "track": true, "text": true}
 	if !styles[q.Style] || (q.Duration != 0 && q.Duration < 5) || q.Duration > 86400 || q.Brightness < 0 || q.Brightness > 200 || q.Speed < 1 || q.Speed > 30 || len([]rune(q.Text)) > 300 || q.Spacing < 0 || q.Spacing > 2 || q.OffsetY < -3 || q.OffsetY > 3 || q.ArtistLevel < 0 || q.ArtistLevel > 255 || (len(q.Background) != 0 && len(q.Background) != 400) {
 		fail(w, "Проверьте параметры дисплея", 400)
 		return
@@ -379,6 +382,13 @@ func ambientAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	go ambientWorker(ctx, done, q)
 	response(w, map[string]bool{"ok": true})
+}
+func saveAmbient(q ambientConfig) error {
+	b, e := json.Marshal(q)
+	if e != nil {
+		return e
+	}
+	return os.WriteFile(filepath.Join(base, "ambient.json"), b, 0600)
 }
 func resumeAmbient() {
 	time.Sleep(2 * time.Second)

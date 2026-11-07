@@ -40,3 +40,5 @@ The Station Max YNDX-0008 top-view photograph (panel/web/station-max-top.jpg) is
 The launch-star.png bitmap was created for AliceKit with OpenAI imagegen. The existing purple emblem is retained. Product photography is not generated.
 
 The AliceKit TV 16:9 launcher banner was generated for this project with OpenAI imagegen using its approved purple emblem as a style reference. See ART-DIRECTION.md for the prompt and production assets.
+
+Light Station Max top photograph (panel/web/station-max-top-light.jpg) is an actual product photograph from https://superbia.ru/netcat_files/multifile/328/9151/ys_max_wh04.jpg (product page https://superbia.ru/catalog/smart-speakers/yandex-station-max-white.html). It is not covered by the project MIT license. UI crops it to the control surface without synthesizing hardware details.

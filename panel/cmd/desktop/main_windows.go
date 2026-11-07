@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/hmac"
 	"crypto/rand"
@@ -24,6 +25,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"stationpanel/internal/stockdiscovery"
 	"strings"
 	"sync"
 	"syscall"
@@ -34,7 +36,7 @@ import (
 //go:embed assets/*
 var assets embed.FS
 
-const version = "2.7.0"
+const version = "2.8.0"
 const channel = "https://github.com/golodgolub-bit/Station-Studio/releases/latest/download/channel.json"
 const fakeKey = "000000000000000000000000000000000000000000000000"
 
@@ -107,7 +109,7 @@ func privateHost(host string) (string, error) {
 	return ip.String(), nil
 }
 func transport(pin string, observed *string) *http.Transport {
-	return &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true, VerifyConnection: func(cs tls.ConnectionState) error {
+	return &http.Transport{Proxy: nil, DialContext: stockdiscovery.DialContext, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true, VerifyConnection: func(cs tls.ConnectionState) error {
 		if len(cs.PeerCertificates) == 0 {
 			return fmt.Errorf("Нет сертификата станции")
 		}
@@ -299,6 +301,26 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		w.Write(b)
 		return
+	case "/desktop/onboarding.html", "/desktop/onboarding.css", "/desktop/onboarding.js", "/desktop/station-max.png", "/desktop/launch-star.png":
+		name := strings.TrimPrefix(r.URL.Path, "/desktop/")
+		b, e := assets.ReadFile("assets/" + name)
+		if e != nil {
+			http.NotFound(w, r)
+			return
+		}
+		mime := "image/png"
+		if strings.HasSuffix(name, ".html") {
+			mime = "text/html;charset=utf-8"
+		}
+		if strings.HasSuffix(name, ".css") {
+			mime = "text/css;charset=utf-8"
+		}
+		if strings.HasSuffix(name, ".js") {
+			mime = "text/javascript;charset=utf-8"
+		}
+		w.Header().Set("Content-Type", mime)
+		w.Write(b)
+		return
 	case "/desktop/state":
 		cfg := a.snapshot()
 		jsonOut(w, map[string]any{"version": version, "host": cfg.Host, "connected": cfg.Token != ""})
@@ -308,7 +330,28 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "POST", 405)
 			return
 		}
-		jsonOut(w, map[string]any{"stations": discover()})
+		stockChannel := make(chan []stockdiscovery.Station, 1)
+		go func() {
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			defer cancel()
+			stockChannel <- stockdiscovery.Discover(ctx)
+		}()
+		panels := discover()
+		stations := <-stockChannel
+		for _, host := range panels {
+			found := false
+			for i := range stations {
+				if stations[i].Host == host {
+					stations[i].Panel = true
+					found = true
+					break
+				}
+			}
+			if !found {
+				stations = append(stations, stockdiscovery.Station{Host: host, Name: "Станция Макс", Panel: true})
+			}
+		}
+		jsonOut(w, map[string]any{"stations": panels, "devices": stations})
 		return
 	case "/desktop/pair":
 		a.pair(w, r)

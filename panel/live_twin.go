@@ -15,6 +15,7 @@ import (
 
 // Read-only telemetry: no controller flags, audio recording, or sysfs writes.
 type twinSnapshot struct {
+	Variant          string   `json:"variant"`
 	Timestamp        int64    `json:"timestamp"`
 	Frame            []byte   `json:"frame,omitempty"`
 	Ring             [][3]int `json:"ring,omitempty"`
@@ -145,7 +146,7 @@ func liveTwinAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	twinProfileOnce.Do(func() { twinProfileSupported = buildID() == "5000000921" })
-	s := twinSnapshot{Timestamp: time.Now().UnixMilli(), Width: 25, Height: 16}
+	s := twinSnapshot{Variant: getAppearance().Variant, Timestamp: time.Now().UnixMilli(), Width: 25, Height: 16}
 	if twinProfileSupported {
 		var e error
 		s.Frame, e = readTwinDisplay()
