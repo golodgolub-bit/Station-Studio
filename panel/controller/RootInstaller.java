@@ -32,15 +32,46 @@ final class RootInstaller {
  JSONObject recover()throws Exception {
   if(lastId==null)return new JSONObject().put("state","none");
   String stage="/data/local/tmp/station-studio-install-"+lastId;
-  String raw=remote.shell("cat /proc/sys/kernel/random/boot_id; echo ALICEKIT_RECEIPT; cat "+stage+"/receipt 2>/dev/null || true; echo ALICEKIT_STATE; cat /data/local/tmp/rootd-op.state 2>/dev/null || true; echo ALICEKIT_LOG; tail -n 12 "+stage+"/install.log 2>/dev/null || true",30000);
+  String raw=remote.shell("cat /proc/sys/kernel/random/boot_id; echo ALICEKIT_RECEIPT; if [ ! -L /data/local/tmp ] && [ ! -L "+stage+" ] && [ -d "+stage+" ]; then if [ -f "+stage+"/receipt ] && [ ! -L "+stage+"/receipt ]; then head -c 4096 "+stage+"/receipt; fi; fi; echo; echo ALICEKIT_STATE; if [ -f /data/local/tmp/rootd-op.state ] && [ ! -L /data/local/tmp/rootd-op.state ]; then head -c 4096 /data/local/tmp/rootd-op.state; fi; echo; echo ALICEKIT_LOG; if [ ! -L /data/local/tmp ] && [ ! -L "+stage+" ] && [ -d "+stage+" ] && [ -f "+stage+"/install.log ] && [ ! -L "+stage+"/install.log ]; then tail -c 16384 "+stage+"/install.log; fi",30000);
+  return recoveryResult(raw,lastId,lastBoot);
+ }
+ static JSONObject recoveryResult(String raw,String id,String boot)throws Exception {
+  raw=raw.replace("\r\n","\n");
   String[] a=raw.split("\nALICEKIT_RECEIPT\n",2);if(a.length!=2)throw new IOException("Станция не вернула результат проверки");
   String[] b=a[1].split("ALICEKIT_STATE\n",2),c=b.length==2?b[1].split("ALICEKIT_LOG\n",2):new String[0];
   Map<String,String> receipt=fields(b[0]),state=fields(c.length>0?c[0]:"");
-  boolean current=lastBoot.equals(a[0].trim());String operation="alicekit-"+lastId;
-  boolean matched=operation.equals(receipt.get("operation_id"))&&lastBoot.equals(receipt.get("boot_id"));
-  boolean completed=current&&((matched&&"0".equals(receipt.get("exit"))&&c.length==2&&c[1].contains("INSTALL_OK backup="))||(operation.equals(state.get("operation_id"))&&lastBoot.equals(state.get("boot_id"))&&"complete".equals(state.get("phase"))));
-  String result=completed?"installed":!current?"rebooted":matched?"failed":"unknown";
-  return new JSONObject().put("state",result).put("boot",lastBoot).put("phase",operation.equals(state.get("operation_id"))?state.get("phase"):"");
+  boolean current=boot.equals(a[0].trim());String operation="alicekit-"+id;
+  boolean matched=operation.equals(receipt.get("operation_id"))&&boot.equals(receipt.get("boot_id"));
+  String log=c.length==2?c[1]:"",exit=receipt.get("exit");boolean exited=matched&&exit!=null&&exit.matches("[0-9]{1,3}")&&Integer.parseInt(exit)<=255;
+  boolean completed=current&&((exited&&"0".equals(exit)&&log.matches("(?s).*?(?m)^INSTALL_OK backup=[^\\n]+.*"))||(operation.equals(state.get("operation_id"))&&boot.equals(state.get("boot_id"))&&"complete".equals(state.get("phase"))));
+  String result=completed?"installed":!current?"rebooted":exited&&!"0".equals(exit)?"failed":"unknown";
+  JSONObject out=new JSONObject().put("state",result).put("kind",completed?"installed":result.equals("failed")?"attempt-failed":"unconfirmed").put("boot",boot).put("phase",operation.equals(state.get("operation_id"))?state.get("phase"):"");
+  if(exited&&current)out.put("exitCode",Integer.parseInt(exit));
+  if(result.equals("failed")){
+   String reason="ROOT_ATTEMPT_FAILED",action="Попытка получения root завершилась с кодом "+exit+". Это ошибка установщика, а не сети или кнопки. Откройте техническую причину ниже; новая попытка автоматически не запускается.";
+   String diagnostic=diagnostic(log);boolean entered=log.contains("shell: exec /system/bin/sh")||log.contains("ESCALATION OK")||log.contains("INSTALL_FAIL:")||log.contains("PERMISSIVE");
+   if(!entered&&transientFailure(log)&&!Arrays.asList("124","126","127","137","143").contains(exit)){reason="ROOT_BOOTSTRAP_TRANSIENT";action="Метод получения root не сработал на этой попытке: установщик сообщил о сбое чтения памяти до запуска root-оболочки. Мастер проверит, есть ли следы записи системы. Повтор автоматически не запускается.";}
+   else if(log.contains("required device commands missing:")||log.contains("required command check failed")){reason="ROOT_REQUIRED_TOOL_MISSING";action="В прошивке не хватает утилиты, необходимой оригинальному установщику. Переустановка AliceBridge и смена DNS это не исправят. Название отсутствующей утилиты показано ниже; нужен совместимый комплект автора Hybrid Root.";}
+   else if(log.contains("permissive helper failed")||log.contains("after permissive")){reason="ROOT_PERMISSIVE_FAILED";action="Установщик не смог подготовить права SELinux. Установка автозапуска не подтверждена. Ниже сохранена конкретная ошибка; повтор root автоматически не запускается.";}
+   else if(log.contains("INSTALL_FAIL:")){reason="ROOT_INSTALLER_FAILED";action="Оригинальный установщик остановил установку. Ниже показана его причина и последний этап. Не удаляйте файлы предыдущей попытки; при начавшейся записи требуется восстановление по гайду Hybrid Root.";}
+   else if(exit.equals("126")||exit.equals("127")){reason="ROOT_EXEC_FAILED";action="Станция не смогла запустить команду установщика (код "+exit+"). Ниже показана техническая причина. Повторное получение root автоматически не запускается.";}
+   out.put("reason",reason).put("guidance",action);if(!diagnostic.isEmpty())out.put("diagnostic",diagnostic);
+  }else if(result.equals("unknown"))out.put("reason","ROOT_RESULT_UNCONFIRMED").put("guidance","Нет подтверждённого завершения этой попытки. Она может ещё выполняться. Нажмите «Обновить результат»; повторно root не запускайте.");
+  else if(result.equals("rebooted"))out.put("reason","ROOT_BOOT_CHANGED").put("guidance","Станция перезапустилась после попытки. Нажмите «Проверить доступ заново»: мастер проверит фактические права в новом запуске.");
+  return out;
+ }
+ private static boolean transientFailure(String log){for(String line:log.split("\n"))if(line.startsWith("RESULT:")&&!line.equals("RESULT: reader bring-up failed")&&!line.equals("RESULT: scan phase failed; NO writes done"))return false;String last=log.trim();return last.endsWith("RESULT: reader bring-up failed")||last.endsWith("RESULT: scan phase failed; NO writes done")||last.endsWith("bridge: reader bring-up failed")||last.endsWith("bridge: scan phase failed; NO writes done");}
+ private static String diagnostic(String log){List<String> lines=new ArrayList<>();for(String line:log.split("\n")){line=line.trim();if(line.matches("^(RESULT:|bridge:|INSTALL_FAIL:|INSTALL: required device commands missing:|ERROR:|required device commands missing:|/system/bin/sh:).*")){String clean=SetupJournal.safe(line);if(clean.length()>160)clean=clean.substring(0,160);lines.add(clean);}}StringBuilder out=new StringBuilder();for(int i=Math.max(0,lines.size()-3);i<lines.size();i++){if(out.length()>0)out.append('\n');out.append(lines.get(i));}return out.toString();}
+ JSONObject inspectResult()throws Exception{
+  JSONObject own=recover();String state=own.optString("state");
+  if(state.equals("installed"))return own;
+  if(state.equals("none"))return preparePrevious();
+  JSONObject history=preparePrevious();
+  if(history.optString("state").equals("repaired"))return history;
+  JSONObject evidence=history.optJSONObject("evidence");if(evidence!=null)own.put("evidence",evidence);
+  if(history.optString("kind").equals("needs-review")||history.optString("kind").equals("active"))return own.put("state","blocked").put("kind",history.optString("kind")).put("guidance",history.optString("guidance"));
+  if(state.equals("failed")&&own.optString("reason").equals("ROOT_BOOTSTRAP_TRANSIENT")&&evidence!=null&&evidence.optString("state_file").equals("absent")&&evidence.optString("status_file").equals("absent")&&evidence.optString("lock").equals("absent")&&evidence.optString("service").equals("absent")&&evidence.optString("process").equals("not-seen"))own.put("guidance","Попытка завершилась с известным сбоем чтения памяти до root-оболочки. Файлы этапов установки, автозапуска и активный root-процесс не обнаружены. Перезапустите станцию обычным способом, подождите три минуты и нажмите «Проверить доступ заново». Мастер заново проверит безопасность; следующую попытку вы подтвердите отдельно.");
+  return own;
  }
  private static Map<String,String> fields(String raw){Map<String,String> out=new HashMap<>();for(String line:raw.split("\n")){int i=line.indexOf('=');if(i>0)out.put(line.substring(0,i),line.substring(i+1).trim());}return out;}
 
@@ -80,7 +111,7 @@ final class RootInstaller {
   return after.put("state",reason.equals("WAIT_BOOT")?"waiting":"blocked").put("kind","action-required").put("repairReason",reason.matches("[A-Z_]{1,40}")?reason:"UNCONFIRMED").put("guidance",action);
  }
  private static JSONObject repaired(JSONObject after)throws Exception{return after.put("state","repaired").put("kind","repaired").put("repairReason","OLD_BOOT_NO_STATE").put("guidance","Устаревшая блокировка снята. Переустанавливать AliceBridge не нужно. Продолжите настройку: файлы установщика сохраняются, новую попытку root вы подтвердите отдельно.");}
- static String summary(JSONObject result){JSONObject e=result.optJSONObject("evidence");StringBuilder out=new StringBuilder("state="+result.optString("state")+"; kind="+result.optString("kind"));if(result.has("repairReason"))out.append("; repair=").append(result.optString("repairReason"));if(e!=null)for(String k:new String[]{"marker_file","markerBoot","state_file","state_phase","status_file","status_state","lock","service","process"})if(e.has(k))out.append("; ").append(k).append("=").append(e.optString(k));return out.toString();}
+ static String summary(JSONObject result){JSONObject e=result.optJSONObject("evidence");StringBuilder out=new StringBuilder("state="+result.optString("state")+"; kind="+result.optString("kind"));for(String k:new String[]{"reason","exitCode","phase","repairReason"})if(result.has(k)&&!result.optString(k).isEmpty())out.append("; ").append(k.equals("repairReason")?"repair":k).append("=").append(result.optString(k));if(e!=null)for(String k:new String[]{"marker_file","markerBoot","state_file","state_phase","status_file","status_state","lock","service","process"})if(e.has(k))out.append("; ").append(k).append("=").append(e.optString(k));String detail=result.optString("diagnostic");if(!detail.isEmpty())out.append("; detail=").append(detail.substring(Math.max(0,detail.length()-180)).replace('\n',' '));return out.toString();}
 
  String preflight()throws Exception {
   String[] f=remote.shell("getprop ro.product.device; getprop ro.build.version.incremental; getprop ro.build.fingerprint; uname -r; cat /proc/sys/kernel/random/boot_id; cat /proc/uptime; id -u",30000).split("\n");
@@ -110,7 +141,7 @@ final class RootInstaller {
   remote.shell(marker,30000);attempted=true;remote.progress("Получаем root и устанавливаем автозапуск. Не отключайте питание. Повторных попыток не будет.");
   String result;
   try{result=remote.shell("(cd "+stage+" && BASE="+stage+" OPERATION_ID="+operation+" STAGING_NONCE="+id+" INFLIGHT_OWNED=1 ./root-bridge esc-shell < hybrid/install-run.sh) > "+stage+"/install.log 2>&1; rc=$?; umask 077; printf 'operation_id="+operation+"\\nboot_id="+boot+"\\nexit=%s\\n' \"$rc\" > "+stage+"/receipt.new && mv "+stage+"/receipt.new "+stage+"/receipt; cat "+stage+"/install.log; exit \"$rc\"",300000);}
-  catch(Exception interrupted){remote.progress("Проверяем сохранённый результат на станции. Root повторно не запускается…");try{if("installed".equals(recover().getString("state")))return boot;}catch(Exception ignored){}throw new IOException("Завершение установки пока не подтверждено. Нажмите «Проверить результат»: приложение прочитает состояние без повторного получения root.",interrupted);}
+  catch(Exception interrupted){remote.progress("Читаем код завершения и причину из журнала установщика. Root повторно не запускается…");JSONObject outcome=null;try{outcome=inspectResult();}catch(Exception ignored){}if(outcome!=null){if("installed".equals(outcome.optString("state")))return boot;if("failed".equals(outcome.optString("state"))||"blocked".equals(outcome.optString("state")))throw new IOException(outcome.optString("guidance"),interrupted);}throw new IOException("Завершение установки пока не подтверждено. Нажмите «Обновить результат»: приложение прочитает состояние без повторного получения root.",interrupted);}
   if(!result.contains("INSTALL_OK backup="))throw new IOException("Установщик не подтвердил завершение. Повтор не выполняется. Диагностика: "+stage);
   remote.progress("Установщик подтвердил root. Резервная копия сохранена на станции. Для проверки автозапуска нужна перезагрузка.");return boot;
  }
