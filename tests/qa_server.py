@@ -28,6 +28,7 @@ class Handler(SimpleHTTPRequestHandler):
   self.send({'ok':True})
  def do_GET(self):
   p=urlparse(self.path)
+  if p.path=='/api/setup/status':self.send({'ok':True,'model':'yandexstation_2','build':'5000000921','root':True,'permissive':True,'protected':True,'protection':{'state':'PROTECTED'},'next':'Панель работает. ADB для управления не нужен.','checkedAt':int(time.time())});return
   if p.path.startswith('/guide/'):
    name=p.path.split('/')[-1] or 'onboarding.html';assert name.replace('-','').replace('.','').isalnum();asset=ROOT.parent/'controller/assets'/name
    if not asset.is_file():asset=ROOT/name

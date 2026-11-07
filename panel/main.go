@@ -299,6 +299,7 @@ func main() {
 	mux.HandleFunc("/api/action", auth(action))
 	mux.HandleFunc("/api/screen", auth(screenshot))
 	mux.HandleFunc("/api/diagnostics", auth(diagnostics))
+	mux.HandleFunc("/api/setup/status", auth(setupStatusAPI))
 	mux.HandleFunc("/api/audio", auth(audioAPI))
 	mux.HandleFunc("/api/audio/play", auth(audioPlayAPI))
 	mux.HandleFunc("/api/scenarios", auth(scenariosAPI))

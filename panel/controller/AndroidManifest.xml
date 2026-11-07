@@ -1,10 +1,10 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.station.controller" android:versionCode="22" android:versionName="2.8.0">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.station.controller" android:versionCode="23" android:versionName="2.8.1">
  <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="35"/>
  <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
  <uses-feature android:name="android.software.leanback" android:required="false"/>
  <uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/><uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/><uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
- <queries><package android:name="ab.root"/><package android:name="com.yandex.iot"/><intent><action android:name="android.intent.action.VIEW"/><data android:scheme="https"/></intent></queries>
+ <queries><package android:name="ab.root"/><package android:name="moe.shizuku.privileged.api"/><package android:name="com.hamondev.shevery"/><package android:name="com.yandex.iot"/><intent><action android:name="android.intent.action.VIEW"/><data android:scheme="https"/></intent></queries>
  <application android:icon="@drawable/studio_icon" android:banner="@drawable/alicekit_tv_banner" android:label="AliceKit" android:theme="@style/AliceKitTheme" android:usesCleartextTraffic="false" android:allowBackup="false" android:hardwareAccelerated="true">
  <activity android:name=".ControllerActivity" android:exported="true" android:launchMode="singleTask" android:configChanges="orientation|screenSize|keyboardHidden"><intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="alicekit" android:host="profile" android:path="/telegram"/></intent-filter></activity>
  <activity-alias android:name=".MainActivity" android:targetActivity=".ControllerActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/><category android:name="android.intent.category.LEANBACK_LAUNCHER"/></intent-filter></activity-alias>
