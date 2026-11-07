@@ -45,7 +45,8 @@ jobs:
           for name, info in manifest['assets'].items():
               if not 0 < info['size'] < 64 * 1024 * 1024:
                   raise RuntimeError('Invalid artifact size')
-              with urllib.request.urlopen(origin + '/' + name, timeout=90) as response:
+              request = urllib.request.Request(origin + '/' + name, headers={'User-Agent': 'AliceKit-Release-Publisher/2.8 (+https://github.com/golodgolub-bit/Station-Studio)'})
+              with urllib.request.urlopen(request, timeout=90) as response:
                   raw = response.read(info['size'] + 1)
               if len(raw) != info['size'] or hashlib.sha256(raw).hexdigest() != info['sha256']:
                   raise RuntimeError('Artifact integrity check failed: ' + name)

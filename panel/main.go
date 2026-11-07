@@ -237,6 +237,14 @@ func main() {
 	flag.StringVar(&base, "base", "/data/local/tmp/station-panel", "data directory")
 	listen := flag.String("listen", ":8787", "listen address")
 	flag.Parse()
+	if _, err := os.Stat("/system/bin/getprop"); !os.IsNotExist(err) {
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		err = waitForAndroidRuntime(ctx, func() bool { return read("/sys/fs/selinux/enforce") == "0" })
+		cancel()
+		if err != nil {
+			log.Fatal("Не дождались готовности root: ", err)
+		}
+	}
 	initAndroidDNS()
 	os.MkdirAll(base, 0750)
 	token = read(filepath.Join(base, "access.key"))

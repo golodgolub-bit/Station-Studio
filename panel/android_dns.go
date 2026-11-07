@@ -81,7 +81,7 @@ func currentAndroidDNS() (androidDNS, error) {
 	return cfg, nil
 }
 func initAndroidDNS() {
-	if _, e := os.Stat("/system/bin/getprop"); e != nil {
+	if _, e := os.Stat("/system/bin/getprop"); os.IsNotExist(e) {
 		return
 	}
 	// GOOS=linux also omits Android's certificate directory. Use the device's
@@ -121,4 +121,24 @@ func initAndroidDNS() {
 		// A configured private DNS failure never falls back to plaintext/public DNS.
 		return nil, fmt.Errorf("DNS активной сети не ответил: %v", last)
 	}}
+}
+
+// Rootd and this service receive the same boot event. Starting networking while
+// rootd is still changing SELinux can permanently cache failed trust/DNS setup.
+func waitForAndroidRuntime(ctx context.Context, ready func() bool) error {
+	if ready() {
+		return nil
+	}
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if ready() {
+				return nil
+			}
+		}
+	}
 }

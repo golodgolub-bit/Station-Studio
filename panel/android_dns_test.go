@@ -1,6 +1,32 @@
 package main
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+)
+
+func TestAndroidRuntimeWaitsThroughRootInitialization(t *testing.T) {
+	checks := 0
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	err := waitForAndroidRuntime(ctx, func() bool { checks++; return checks >= 3 })
+	if err != nil || checks != 3 {
+		t.Fatalf("root initialization was not awaited: checks=%d err=%v", checks, err)
+	}
+	readyChecks := 0
+	if err = waitForAndroidRuntime(ctx, func() bool { readyChecks++; return true }); err != nil || readyChecks != 1 {
+		t.Fatal("ready runtime should start immediately")
+	}
+}
+func TestAndroidRuntimeTimeoutDoesNotClaimReadiness(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := waitForAndroidRuntime(ctx, func() bool { return false }); !errors.Is(err, context.Canceled) {
+		t.Fatal("unready runtime was accepted", err)
+	}
+}
 
 func TestAndroidDNSUsesOnlyActiveNetwork(t *testing.T) {
 	raw := `Active default network: 102
