@@ -17,14 +17,20 @@ jobs:
       - name: Authenticate maintenance and delete expired rows
         shell: python
         run: |
-          import json, os, urllib.request, urllib.parse
+          import base64, json, os, time, urllib.request, urllib.parse, urllib.error
           endpoint = 'https://station-studio-community.shaaaape.chatgpt.site/api/diagnostics/cleanup'
           address = os.environ['ACTIONS_ID_TOKEN_REQUEST_URL'] + '&audience=' + urllib.parse.quote(endpoint, safe='')
           request = urllib.request.Request(address, headers={'Authorization': 'Bearer ' + os.environ['ACTIONS_ID_TOKEN_REQUEST_TOKEN']})
           with urllib.request.urlopen(request, timeout=20) as response:
               token = json.load(response)['value']
+          claims = json.loads(base64.urlsafe_b64decode(token.split('.')[1] + '==='))
+          print('Public workflow identity:', json.dumps({k: claims.get(k) for k in ['iss', 'aud', 'repository', 'repository_id', 'ref', 'workflow_ref', 'event_name', 'iat', 'nbf', 'exp']}))
           request = urllib.request.Request(endpoint, method='POST', data=b'', headers={'Authorization': 'Bearer ' + token, 'User-Agent': 'AliceKit-Diagnostics-Maintenance/2.9.0'})
-          with urllib.request.urlopen(request, timeout=30) as response:
-              result = json.load(response)
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  result = json.load(response)
+          except urllib.error.HTTPError as error:
+              print('Maintenance endpoint status:', error.code, error.read(300).decode(errors='replace'))
+              raise RuntimeError('Maintenance was not confirmed') from None
           assert result.get('ok') is True
           print('Expired report cleanup confirmed; removed:', result['removed'])
