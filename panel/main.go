@@ -321,6 +321,7 @@ func main() {
 	mux.HandleFunc("/api/plugins/runtime", auth(pluginRuntimeAPI))
 	mux.HandleFunc("/api/music/play", auth(musicPlayAPI))
 	mux.HandleFunc("/api/music/album", auth(albumAPI))
+	mux.HandleFunc("/api/home/art", auth(homeArtAPI))
 	mux.HandleFunc("/api/music/cover", auth(coverAPI))
 	mux.HandleFunc("/api/privacy", auth(privacyAPI))
 	mux.HandleFunc("/api/privacy/connections", auth(privacyConnectionsAPI))

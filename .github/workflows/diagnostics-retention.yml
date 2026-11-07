@@ -1,0 +1,30 @@
+name: Remove expired diagnostic reports
+'on':
+  schedule:
+    - cron: '23 3,15 * * *'
+  push:
+    branches: [main]
+    paths: [.github/workflows/diagnostics-retention.yml, release-publish.json]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Authenticate maintenance and delete expired rows
+        shell: python
+        run: |
+          import json, os, urllib.request, urllib.parse
+          endpoint = 'https://station-studio-community.shaaaape.chatgpt.site/api/diagnostics/cleanup'
+          address = os.environ['ACTIONS_ID_TOKEN_REQUEST_URL'] + '&audience=' + urllib.parse.quote(endpoint, safe='')
+          request = urllib.request.Request(address, headers={'Authorization': 'Bearer ' + os.environ['ACTIONS_ID_TOKEN_REQUEST_TOKEN']})
+          with urllib.request.urlopen(request, timeout=20) as response:
+              token = json.load(response)['value']
+          request = urllib.request.Request(endpoint, method='POST', data=b'', headers={'Authorization': 'Bearer ' + token})
+          with urllib.request.urlopen(request, timeout=30) as response:
+              result = json.load(response)
+          assert result.get('ok') is True
+          print('Expired report cleanup confirmed; removed:', result['removed'])

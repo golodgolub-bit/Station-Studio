@@ -36,7 +36,7 @@ import (
 //go:embed assets/*
 var assets embed.FS
 
-const version = "2.8.2"
+const version = "2.9.0"
 const channel = "https://github.com/golodgolub-bit/Station-Studio/releases/latest/download/channel.json"
 const fakeKey = "000000000000000000000000000000000000000000000000"
 
@@ -321,6 +321,19 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", mime)
 		w.Write(b)
 		return
+	case "/desktop/browser":
+		if r.Method != "POST" {
+			http.Error(w, "POST", 405)
+			return
+		}
+		cmd := exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", a.origin+"/desktop/start?code="+a.cookie)
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+		if err := cmd.Start(); err != nil {
+			http.Error(w, "Не удалось открыть браузер", 500)
+			return
+		}
+		jsonOut(w, map[string]bool{"ok": true})
+		return
 	case "/desktop/state":
 		cfg := a.snapshot()
 		jsonOut(w, map[string]any{"version": version, "host": cfg.Host, "connected": cfg.Token != ""})
@@ -495,6 +508,10 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "--headless-test" {
 		fmt.Println(url)
+	} else if len(os.Args) > 1 && os.Args[1] == "--web" {
+		cmd := exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", url)
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+		cmd.Start()
 	} else if edge != "" {
 		cmd := exec.Command(edge, "--app="+url, "--window-size=1320,900")
 		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}

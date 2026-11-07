@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"fmt"
+	_ "golang.org/x/image/webp"
 	"image"
+	_ "image/gif"
 	"image/jpeg"
 	_ "image/png"
 	"io"
@@ -193,7 +195,7 @@ func refreshCover() (coverInfo, error) {
 				}
 			}
 		}
-		c.Available = len(c.Palette) >= 2
+		c.Available = len(c.Palette) >= 2 && fileExists(filepath.Join(base, "album.jpg"))
 		if !c.Available {
 			c.Error = "Плеер пока не передал обложку этого трека"
 		}

@@ -45,16 +45,17 @@ final class RootInstaller {
  private static Map<String,String> fields(String raw){Map<String,String> out=new HashMap<>();for(String line:raw.split("\n")){int i=line.indexOf('=');if(i>0)out.put(line.substring(0,i),line.substring(i+1).trim());}return out;}
  String preflight()throws Exception {
   String[] f=remote.shell("getprop ro.product.device; getprop ro.build.version.incremental; getprop ro.build.fingerprint; uname -r; cat /proc/sys/kernel/random/boot_id; cat /proc/uptime; id -u",30000).split("\n");
-  if(f.length!=7||!compatible(f[0],f[1],f[2],f[3]))throw new IOException("Этот root-профиль подходит только Max 5000000921 / ядро 4.9.113. Изменений нет.");
+  if(f.length!=7||!compatible(f[0],f[1],f[2],f[3]))throw new IOException("ROOT_PROFILE_UNSUPPORTED: Этот root-профиль подходит только Max 5000000921 / ядро 4.9.113. Изменений нет.");
   if("0".equals(f[6]))throw new IOException("Root уже доступен: перейдите к установке панели");
-  if(Double.parseDouble(f[5].split(" ")[0])<180)throw new IOException("После запуска станции должно пройти минимум три минуты");
+  if(Double.parseDouble(f[5].split(" ")[0])<180)throw new IOException("ROOT_UPTIME_WAIT: После запуска станции должно пройти минимум три минуты");
   String status=remote.shell("cat /data/local/tmp/rootstatus 2>/dev/null || true",30000);if(status.contains("state=PROTECTED"))throw new IOException("Hybrid Root уже работает. Повторное получение не требуется");
-  remote.shell("set -eu; [ ! -e /data/local/tmp/rootd-op.inflight ]; [ ! -L /data/local/tmp/rootd-op.inflight ]; [ ! -e /data/local/tmp/rootd-op.lock ]; [ ! -e /odm/bin/rootd ]; names=$(ps -A -o NAME); ! printf '%s\\n' \"$names\" | grep -E '^(rootd|root-bridge|esc-bridge|esc36449|cve36449)$'",30000);
+  String conflict=remote.shell("if [ -e /data/local/tmp/rootd-op.inflight ] || [ -L /data/local/tmp/rootd-op.inflight ]; then echo ROOT_OPERATION_PENDING; elif [ -e /data/local/tmp/rootd-op.lock ]; then echo ROOT_OPERATION_LOCKED; elif [ -e /odm/bin/rootd ]; then echo ROOT_SERVICE_EXISTS; else names=$(ps -A -o NAME) || exit 3; if printf '%s\\n' \"$names\" | grep -qE '^(rootd|root-bridge|esc-bridge|esc36449|cve36449)$'; then echo ROOT_PROCESS_ACTIVE; else echo ROOT_PREFLIGHT_CLEAR; fi; fi",30000);
+  if(!"ROOT_PREFLIGHT_CLEAR".equals(conflict))throw new IOException(conflict+": На станции обнаружена предыдущая операция или служба root. Повторный запуск заблокирован. Сначала проверьте доступ и сохранённый результат; не удаляйте служебные файлы вручную.");
   return f[4];
  }
  String install(String router,String dns)throws Exception {
   attempted=false;
-  if(!ready())throw new IOException("Сначала выберите проверенный архив Hybrid Root");router=StationDiscovery.local(router);dns=StationDiscovery.local(dns);
+  if(!ready())throw new IOException("ROOT_FILE_MISSING: Передайте оригинальный установщик в AliceKit");router=StationDiscovery.local(router);dns=RootNetwork.dnsAddress(dns);
   remote.progress("Проверяем точную прошивку и отсутствие другого root-процесса…");String boot=preflight();
   String id=UUID.randomUUID().toString().replace("-",""),operation="alicekit-"+id,stage="/data/local/tmp/station-studio-install-"+id;
   remote.shell("set -eu; umask 077; [ ! -L /data/local/tmp ]; mkdir "+stage+"; mkdir "+stage+"/hybrid",30000);
@@ -63,7 +64,7 @@ final class RootInstaller {
   StringBuilder sums=new StringBuilder();for(String name:files.keySet())sums.append(trusted.getString(name)).append("  ").append(name.equals("bootstrap/root-bridge")?"root-bridge":name).append('\n');remote.push(stage+"/SHA256SUMS",sums.toString().getBytes("US-ASCII"));
   remote.shell("set -eu; cd "+stage+"; sha256sum -c SHA256SUMS; chmod 755 root-bridge hybrid/permissive hybrid/install-run.sh hybrid/install-device.sh hybrid/rollback-run.sh hybrid/rollback-device.sh; printf 'format=1\\noperation_id="+operation+"\\nnonce="+id+"\\n' > .station-max-stage",30000);
   // Recheck after delivery. Atomically publish a persistent marker before the sole kernel attempt.
-  if(!boot.equals(preflight()))throw new IOException("Станция перезагрузилась во время проверки; root не запускался");
+  if(!boot.equals(preflight()))throw new IOException("ROOT_BOOT_CHANGED: Станция перезагрузилась во время проверки; root не запускался");
   String marker="set -eu; [ \"$(cat /proc/sys/kernel/random/boot_id)\" = "+boot+" ]; set -C; umask 077; printf 'version=1\\noperation_id="+operation+"\\nboot_id="+boot+"\\nstaging_nonce="+id+"\\nstage=install\\ncreated=%s\\n' \"$(date '+%Y-%m-%dT%H:%M:%S')\" > /data/local/tmp/rootd-op.inflight";
   lastId=id;lastBoot=boot;remote.operation(id,boot);
   remote.shell(marker,30000);attempted=true;remote.progress("Получаем root и устанавливаем автозапуск. Не отключайте питание. Повторных попыток не будет.");

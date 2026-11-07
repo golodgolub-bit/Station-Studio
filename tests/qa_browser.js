@@ -6,6 +6,14 @@
  try{
   await until(()=>document.body.classList.contains('station-tv')?document.querySelector('#view .hero'):document.querySelector('#app')?.hidden===false);await wait(700);
   check(document.documentElement.scrollWidth<=innerWidth+1,'Нет горизонтального переполнения');
+  if(screen==='phone-home'){
+   await until(()=>[...document.querySelectorAll('.home-device img')].some(e=>e.src.startsWith('blob:')&&e.complete&&e.naturalWidth>0));
+   check(true,'Изображение устройства загружается через защищённый прокси');
+   await until(()=>[...document.querySelectorAll('[data-album-art]')].some(e=>e.src.startsWith('blob:')&&e.complete&&e.naturalWidth>0));
+   check(true,'Обложка действительно декодирована браузером');
+   await until(()=>document.getElementById('konturSplash')?.classList.contains('ready'));
+   check(performance.now()>=2150,'Загрузка длится не меньше двух секунд');
+  }
   const groups=document.querySelectorAll('.home-device-group');check(groups.length===1,'Группа дома показана одной карточкой');
   check(![...document.querySelectorAll('.home-devices .home-device b')].some(e=>e.textContent==='Торшер'),'Дочерние устройства не дублируются');
   if(screen.startsWith('tv')){
@@ -26,6 +34,7 @@
    }
   }else if(screen==='phone-profile'){showTab('tools');document.querySelector('.account-panel').closest('details').open=true;await until(()=>document.querySelector('.account-panel input')?.value==='Александр');check(!!document.querySelector('.account-panel'),'Профиль доступен на телефоне')}else if(screen==='phone-variant'){showTab('tools');document.querySelector('.station-appearance-editor').closest('details').open=true;await wait(500);document.querySelector('.station-appearance-editor').scrollIntoView({block:'start'});document.querySelector('[data-variant=light]').click();await wait(500);check(document.documentElement.dataset.stationVariant==='light','Светлый корпус применяется на телефоне')}else if(screen==='phone-display'){showTab('light');await wait(600);const b=[...document.querySelectorAll('#displayControlCard button')].find(e=>e.textContent==='Штатный дисплей');check(!!b&&!b.disabled,'Остановка дисплея находится вне редакторов');b.click();await wait(500);check(document.querySelector('#displayControlCard').dataset.source==='native','Постоянный трек убран с дисплея')}else if(screen==='phone-ring'){showTab('light');studioPane('ring');await wait(700)}else if(screen==='phone-music'){showTab('music');await wait(500)}else if(screen==='phone-visual'){showTab('light');studioPane('music');await wait(500)}
   if(screen.endsWith('variant')){await until(()=>[...document.querySelectorAll('.station-variant-choice img')].every(i=>i.complete&&i.naturalWidth>0));const photos=[...document.querySelectorAll('.station-variant-choice img')];check(photos.length===2&&Math.abs(photos[0].getBoundingClientRect().width-photos[1].getBoundingClientRect().width)<1&&Math.abs(photos[0].naturalWidth/photos[0].naturalHeight-photos[1].naturalWidth/photos[1].naturalHeight)<.01,'Обе модели имеют одинаковый кадр и масштаб');}
+  if(screen==='phone-home'){await until(()=>document.querySelector('.home-device-photo')?.naturalWidth>0);check(!!document.querySelector('.home-device-photo[src^="blob:"]'),'Изображение устройства загружается авторизованным запросом через станцию');}
   await until(()=>!document.getElementById("konturSplash")||getComputedStyle(document.getElementById("konturSplash")).visibility==="hidden");await document.fonts.ready;await wait(300);
  }catch(e){report.errors.push(e.message)}
  const result=document.createElement('pre');result.id='qaResult';result.hidden=true;result.textContent=JSON.stringify(report);document.body.append(result);await fetch('/qa/report?screen='+screen,{method:'POST',body:JSON.stringify(report)});document.documentElement.dataset.qaDone='true';
