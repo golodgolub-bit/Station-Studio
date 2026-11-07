@@ -37,8 +37,10 @@ jobs:
               raise RuntimeError('Unexpected release contents')
           origin = manifest['source'].rstrip('/')
           url = urllib.parse.urlparse(origin)
-          if url.scheme != 'https' or not url.hostname.endswith('.trycloudflare.com') or url.path:
-              raise RuntimeError('Invalid temporary artifact origin')
+          temporary = bool(url.hostname and url.hostname.endswith('.trycloudflare.com') and not url.path)
+          hosted = url.hostname == 'station-studio-community.shaaaape.chatgpt.site' and url.path == '/release-assets/' + version
+          if url.scheme != 'https' or not (temporary or hosted) or url.username or url.password or url.port or url.query or url.fragment:
+              raise RuntimeError('Invalid verified artifact origin')
           output = pathlib.Path('dist'); output.mkdir()
           for name, info in manifest['assets'].items():
               if not 0 < info['size'] < 64 * 1024 * 1024:
