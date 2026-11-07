@@ -23,7 +23,7 @@ jobs:
           request = urllib.request.Request(address, headers={'Authorization': 'Bearer ' + os.environ['ACTIONS_ID_TOKEN_REQUEST_TOKEN']})
           with urllib.request.urlopen(request, timeout=20) as response:
               token = json.load(response)['value']
-          request = urllib.request.Request(endpoint, method='POST', data=b'', headers={'Authorization': 'Bearer ' + token})
+          request = urllib.request.Request(endpoint, method='POST', data=b'', headers={'Authorization': 'Bearer ' + token, 'User-Agent': 'AliceKit-Diagnostics-Maintenance/2.9.0'})
           with urllib.request.urlopen(request, timeout=30) as response:
               result = json.load(response)
           assert result.get('ok') is True
