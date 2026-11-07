@@ -50,8 +50,8 @@ final class RootInstaller {
  static JSONObject previousResult(String raw)throws Exception{
   if(!raw.startsWith("ALICEKIT_PREVIOUS_ROOT\n"))throw new IOException("Не получен ответ диагностики предыдущей установки");
   Map<String,String> f=fields(raw);JSONObject evidence=new JSONObject();for(String k:new String[]{"marker_file","state_file","status_file","lock","service","process","marker_operation_id","marker_stage","state_operation","state_phase","status_state"}){String v=f.get(k);if(v!=null&&v.matches("[A-Za-z0-9_.:-]{1,160}"))evidence.put(k,v);}
-  boolean marker=!"absent".equals(f.get("marker_file")),blocked=marker||"present".equals(f.get("lock"))||"present".equals(f.get("service"))||!"not-seen".equals(f.get("process"));
-  String phase=evidence.optString("state_phase"),kind="clear",action="Блокировка сейчас не обнаружена. Нажмите «Проверить доступ заново»: это проверка подключения, не запуск root.";
+  String phase=evidence.optString("state_phase");boolean marker=!"absent".equals(f.get("marker_file")),blocked=marker||Arrays.asList("backup_complete","writing","files_written","verified","failed").contains(phase)||"present".equals(f.get("lock"))||"present".equals(f.get("service"))||!"not-seen".equals(f.get("process"));
+  String kind="clear",action="Блокировка сейчас не обнаружена. Нажмите «Проверить доступ заново»: это проверка подключения, не запуск root.";
   if(blocked){kind="unconfirmed";action="Нажмите «Сохранить журнал для разбора» и отправьте его автору Hybrid Root в том же чате, где брали установщик. В журнале будут фаза и тип блокировки. Не запускайте установщик повторно и не удаляйте rootd-op.inflight вручную.";
    if(Arrays.asList("backup_complete","writing","files_written","verified","failed").contains(phase)){kind="needs-review";action="Предыдущая установка дошла до фазы "+phase+". Сохраните журнал и разберите состояние резервной копии с автором Hybrid Root. Для этих фаз исходный гайд требует status/rollback; простой повтор root не подходит.";}
    else if("present".equals(f.get("process"))){kind="active";action="На станции видна служба или процесс root. Если установка идёт в AliceBridge, дождитесь её окончания. Затем нажмите «Проверить доступ заново». Для нового снимка состояния есть «Обновить диагностику».";}
@@ -66,6 +66,7 @@ final class RootInstaller {
   if("0".equals(f[6]))throw new IOException("Root уже доступен: перейдите к установке панели");
   if(Double.parseDouble(f[5].split(" ")[0])<180)throw new IOException("ROOT_UPTIME_WAIT: После запуска станции должно пройти минимум три минуты");
   String status=remote.shell("cat /data/local/tmp/rootstatus 2>/dev/null || true",30000);if(status.contains("state=PROTECTED"))throw new IOException("Hybrid Root уже работает. Повторное получение не требуется");
+  JSONObject history=previous();if("needs-review".equals(history.optString("kind")))throw new IOException("ROOT_OPERATION_PENDING: "+history.optString("guidance"));
   String conflict=remote.shell("if [ -e /data/local/tmp/rootd-op.inflight ] || [ -L /data/local/tmp/rootd-op.inflight ]; then echo ROOT_OPERATION_PENDING; elif [ -e /data/local/tmp/rootd-op.lock ]; then echo ROOT_OPERATION_LOCKED; elif [ -e /odm/bin/rootd ]; then echo ROOT_SERVICE_EXISTS; else names=$(ps -A -o NAME) || exit 3; if printf '%s\\n' \"$names\" | grep -qE '^(rootd|root-bridge|esc-bridge|esc36449|cve36449)$'; then echo ROOT_PROCESS_ACTIVE; else echo ROOT_PREFLIGHT_CLEAR; fi; fi",30000);
   if(!"ROOT_PREFLIGHT_CLEAR".equals(conflict))throw new IOException(conflict+": На станции обнаружена предыдущая операция или служба root. Повторный запуск заблокирован. Сначала проверьте доступ и сохранённый результат; не удаляйте служебные файлы вручную.");
   return f[4];
